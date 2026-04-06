@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "maxtoki-mlx"
+version = "0.1.0"
+description = "Apple Silicon MLX port of NVIDIA/Gladstone MaxToki - temporal cell aging model"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Srijit Iyer"},
+]
+keywords = ["mlx", "apple-silicon", "single-cell", "aging", "llm", "maxtoki"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+dependencies = [
+    "mlx>=0.20",
+    "mlx-lm>=0.20",
+    "numpy>=1.24",
+    "scipy>=1.10",
+]
+
+[project.optional-dependencies]
+bio = [
+    "anndata>=0.10",
+    "scanpy>=1.10",
+    "cellxgene-census>=1.15",
+]
+dev = [
+    "pytest>=7",
+    "pytest-cov>=4",
+]
+
+[project.urls]
+Homepage = "https://github.com/srijitiyer/maxtoki-mlx"
+Paper = "https://www.biorxiv.org/content/10.64898/2026.03.30.715396v1"
+Upstream = "https://github.com/NVIDIA-Digital-Bio/maxToki"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+maxtoki_mlx = ["resources/*.json"]
