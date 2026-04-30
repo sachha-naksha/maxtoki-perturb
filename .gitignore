@@ -6,6 +6,7 @@ __pycache__/
 
 # build artifacts
 docs/build/
-dist/*.tar.gz
 *.npz
 out/
+
+# Keep release tarballs under dist/ in git so Delta runs can `git pull` them.
