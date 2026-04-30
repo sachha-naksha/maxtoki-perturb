@@ -61,6 +61,22 @@ PoolPick = Literal["first", "last", "evenly_spaced", "random"]
 
 @dataclass
 class DataSpec:
+    """Where the cells live and which obs columns drive selection.
+
+    Attributes:
+        h5ad: Path to a single ``.h5ad`` file. Counts must live in ``adata.X``
+            or ``adata.raw.X``; gene IDs in ``var["ensembl_id"]``,
+            ``var["feature_id"]``, or ENSG-prefixed ``var_names``.
+        pseudotime_col: Name of an ``obs`` column with monotone pseudotime /
+            age / observation-time values. Required by context strategies
+            ``prefix`` and ``all_in_group``, and by ``pool_select.sort_by="pseudotime"``.
+        group_col: Name of an ``obs`` column that groups cells into trajectories
+            (e.g. ``donor_id``). Required by ``prefix`` and ``all_in_group``.
+        cell_id_col: Name of an ``obs`` column to use as the per-cell ID in
+            output records. ``None`` falls back to ``adata.obs_names``.
+        count_col: Name of an ``obs`` column holding pre-computed total UMI
+            counts per cell. ``None`` re-computes from the count matrix.
+    """
     h5ad: str
     pseudotime_col: Optional[str] = None
     group_col: Optional[str] = None
@@ -79,25 +95,61 @@ class PoolSelect:
 
 @dataclass
 class ContextSpec:
+    """How the trajectory of past cells (the context) is assembled per query.
+
+    Attributes:
+        strategy: One of ``self`` (cell vs. itself), ``prefix`` (same-group
+            cells with smaller pseudotime), ``all_in_group`` (all other cells
+            in same group), ``explicit`` (fixed adata indices for every query),
+            or ``pool`` (filter then pick from a cross-group pool).
+        max_cells: Final cap on number of context cells per row.
+        ordering: How context cells are ordered in the input sequence.
+        include_self: When ``True`` and strategy is ``prefix`` /
+            ``all_in_group``, append the query itself to the context.
+        explicit_indices: ``adata.obs`` row indices used as context for every
+            query. Required when ``strategy == "explicit"``.
+        pool_filter: ``{obs_col: [allowed_values]}`` filter applied to the
+            full cell list. Required when ``strategy == "pool"``.
+        pool_select: How to pick a fixed-size context from the filtered pool.
+            Required when ``strategy == "pool"``.
+    """
     strategy: ContextStrategy = "self"
     max_cells: int = 4
     ordering: Ordering = "pseudotime"
     include_self: bool = False
     explicit_indices: Optional[list[int]] = None
-    # Used when strategy=="pool": filter cells by obs columns, then pick.
-    # Example: pool_filter={"donor_age": [34]} or {"donor_id": ["GTEX-001"]}
     pool_filter: dict[str, list[Any]] = field(default_factory=dict)
     pool_select: Optional[PoolSelect] = None
 
 
 @dataclass
 class QuerySpec:
+    """Which cells become queries (one row each in the output dataset).
+
+    Attributes:
+        strategy: ``each_cell`` -> one row per cell; ``latest_per_group`` ->
+            one row per group, the cell with the largest pseudotime.
+        filter_obs: ``{obs_col: [allowed_values]}`` to score only matching
+            cells (e.g. ``{"cell_type": ["fibroblast"]}``).
+    """
     strategy: QueryStrategy = "each_cell"
     filter_obs: dict[str, list[Any]] = field(default_factory=dict)
 
 
 @dataclass
 class PerturbationSpec:
+    """Which gene to perturb, how, and where it's applied in the row.
+
+    Attributes:
+        gene: Ensembl ID (e.g. ``"ENSG00000109906"``). Takes precedence over
+            ``gene_symbol`` if both are set.
+        gene_symbol: HGNC symbol (e.g. ``"ZLX1"``). Resolved against the
+            packaged ``gene_name_id.json``.
+        direction: ``inhibit`` moves the gene's token to the lowest rank;
+            ``delete`` removes it; ``overexpress`` moves it to the front.
+        apply_to: ``query`` perturbs only the query cell; ``query_and_context``
+            also perturbs every cell in the context.
+    """
     gene: Optional[str] = None
     gene_symbol: Optional[str] = None
     direction: Direction = "inhibit"
@@ -106,6 +158,20 @@ class PerturbationSpec:
 
 @dataclass
 class ExperimentSpec:
+    """Top-level spec for one zero-shot perturbation experiment.
+
+    A spec is normally written as YAML (see ``configs/`` for examples) and
+    loaded via :func:`load_spec`. It can also be constructed programmatically.
+
+    Attributes:
+        data: Input h5ad + obs-column mapping.
+        context: How the trajectory of past cells is assembled per query.
+        query: Which cells are scored.
+        perturbation: Gene KO / inhibition / overexpression target.
+        seq_length: Model context length. Default ``16384`` for trajectory
+            tasks; the per-cell rank-value cap is computed from this so the
+            worst-case row fits.
+    """
     data: DataSpec
     context: ContextSpec = field(default_factory=ContextSpec)
     query: QuerySpec = field(default_factory=QuerySpec)
@@ -113,6 +179,7 @@ class ExperimentSpec:
     seq_length: int = 16384
 
     def validate(self) -> None:
+        """Raise ``ValueError`` if the spec is internally inconsistent."""
         c, p = self.context, self.perturbation
         if c.strategy in ("prefix", "all_in_group") and not self.data.pseudotime_col and c.ordering == "pseudotime":
             raise ValueError(
@@ -149,6 +216,18 @@ class ExperimentSpec:
 
 
 def load_spec(path: str | Path) -> ExperimentSpec:
+    """Load an :class:`ExperimentSpec` from a YAML or JSON file.
+
+    Args:
+        path: Filesystem path. Suffix decides the parser (``.yaml`` / ``.yml``
+            -> PyYAML, anything else -> ``json``).
+
+    Returns:
+        A validated :class:`ExperimentSpec`.
+
+    Raises:
+        ValueError: If the spec fails validation.
+    """
     path = Path(path)
     text = path.read_text()
     if path.suffix in (".yaml", ".yml"):
@@ -160,6 +239,7 @@ def load_spec(path: str | Path) -> ExperimentSpec:
 
 
 def spec_from_dict(raw: dict) -> ExperimentSpec:
+    """Build an :class:`ExperimentSpec` from a nested dict (typically parsed YAML)."""
     data = DataSpec(**raw["data"])
     context_raw = dict(raw.get("context", {}))
     pool_select_raw = context_raw.pop("pool_select", None)

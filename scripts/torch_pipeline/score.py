@@ -68,6 +68,23 @@ def load_predictions(predictions_dir: str | Path) -> np.ndarray:
 
 @dataclass
 class ScoreSummary:
+    """Dataset-level summary of one zero-shot perturbation run.
+
+    Attributes:
+        n_cells: Total number of scored rows (queries).
+        n_cells_with_gene: Subset where the perturbed gene was actually
+            present in the query cell's expression profile.
+        mean_mse: ``mean((perturbed_t - baseline_t) ** 2)`` across all rows.
+        mean_mse_present: Same, restricted to ``gene_present`` rows.
+        mean_delta_t: Signed mean of ``perturbed_t - baseline_t``.
+            Negative -> model thinks the perturbation rejuvenates;
+            positive -> ages.
+        mean_delta_t_present: Signed mean restricted to ``gene_present``.
+        abs_mean_delta_t: Mean of absolute ``delta_t``.
+        direction: ``inhibit`` / ``delete`` / ``overexpress``.
+        gene_ensembl: Resolved Ensembl ID of the perturbed gene.
+        gene_token: Token ID in the model's vocabulary.
+    """
     n_cells: int
     n_cells_with_gene: int
     mean_mse: float
