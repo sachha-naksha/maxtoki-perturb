@@ -1,42 +1,20 @@
 # maxtoki-mlx
 
-Apple Silicon MLX port of [MaxToki](https://www.biorxiv.org/content/10.64898/2026.03.30.715396v1), NVIDIA + Gladstone + Yamanaka Lab's temporal model for predicting cell aging trajectories.
+In-silico dynamic ANY GENE perturbation modules for [MaxToki](https://www.biorxiv.org/content/10.64898/2026.03.30.715396v1), NVIDIA + Christina's temporal model for predicting cell aging trajectories.
 
-The upstream release is CUDA-only and requires NVIDIA BioNeMo. This port runs on any M-series Mac using MLX.
+The upstream release is CUDA-only and requires NVIDIA BioNeMo.
 
-## Install
-
-```bash
-pip install maxtoki-mlx
-```
-
-## Quick start
-
-```python
-from maxtoki_mlx import load_model, tokenize_cell, in_silico_perturb
-import scanpy as sc
-
-model = load_model("217m")  # or "1b"
-adata = sc.read_h5ad("my_cells.h5ad")
-tokens = tokenize_cell(adata[0])
-
-# Delete a gene and see how cell state shifts
-result = in_silico_perturb(model, tokens, gene="ENSG00000109906", direction="delete")
-print(f"Age delta: {result['delta_years']:+.1f} years")
-```
+## Run from Apptainer/Docker using the .def (->.sif) image provided in upstream
 
 ## Status
 
-- [x] 217M port (float32), numerical parity with HF transformers (max abs diff 3e-5)
-- [x] 1B port with GQA + llama3 RoPE scaling, numerical parity confirmed
-- [x] Rank-value cell tokenizer
-- [x] In-silico gene perturbation
-- [ ] Temporal head (blocked on BioNeMo distcp conversion)
-- [ ] CELLxGENE data loader
+- [.] 217M (float32), zero-shot perturbation prediction results with viz
+- [.] 217M (float32), rank re-ordered prediction using FIREFate CP
+- [.] 217M (float32), attention matrix augmentation for multi-modality using FIREFate dynamic TF activity
 
 ## Model details
 
-MaxToki is a decoder-only Llama trained on 175M cells. Two variants published:
+MaxToki is a decoder-only Llama trained on 175M cells. Two variants published on HuggingFace:
 
 | | 217M | 1B |
 |---|---|---|
@@ -48,15 +26,13 @@ MaxToki is a decoder-only Llama trained on 175M cells. Two variants published:
 | Vocab | 20275 | 20275 |
 | RoPE | standard | llama3 scaled |
 
-Input format: rank-value encoding of gene expression. Each cell becomes `[<bos>, gene_rank_1, gene_rank_2, ..., <eos>]` where genes are sorted descending by median-normalized expression.
+Input format: rank-value encoding of gene_name, where its expression median-normalized across entire 175M corpus gives its rank. Each cell becomes `[<bos>, gene_rank_1, gene_rank_2, ..., <eos>]`
 
 ## Credits
 
 - MaxToki: J Gomez Ortega et al., Theodoris Lab @ Gladstone / NVIDIA BioNeMo, bioRxiv 10.64898/2026.03.30.715396
 - Geneformer (tokenizer architecture): Theodoris et al.
-- MLX: Apple ML team
-
-The biology credit goes entirely to the MaxToki authors. This project makes their pretrained weights accessible on Apple Silicon.
+- MLX-port: Apple ML team & @srijitiyer
 
 ## License
 
