@@ -24,6 +24,7 @@ Three working examples in `configs/`:
 - **`example_self_baseline.yaml`** — cell-vs-itself, no pseudotime needed. Each query is its own context. Equivalent to the previous default.
 - **`example_pseudotime_trajectory.yaml`** — every query sees up to 4 prior cells from the same donor, sorted by ascending pseudotime. The realistic temporal-prediction setup.
 - **`example_fixed_reference.yaml`** — every query sees the SAME hand-picked reference cells as context. Useful for "compare 4111 cells against a canonical young-donor trajectory" experiments.
+- **`example_young_context_old_query.yaml`** — `pool` strategy: pick 3 cells from the 34y donor as context, score every 80y cell as query. The aging-readout setup.
 
 ## Context strategies
 
@@ -33,6 +34,7 @@ Three working examples in `configs/`:
 | `prefix` | cells in same group with `pseudotime < query.pseudotime`, sorted asc, capped to `max_cells` (latest kept) | `data.group_col`, `data.pseudotime_col` |
 | `all_in_group` | every cell in same group except the query, sorted by pseudotime, capped | `data.group_col` |
 | `explicit` | the same `context.explicit_indices` for every query | `context.explicit_indices` |
+| `pool` | filter cells by `pool_filter` (e.g. `donor_age: [34]`), sort, and pick `n` (first / last / evenly_spaced / random). Applied identically to every query — useful for "young-donor reference vs. old-donor query" | `pool_filter`, `pool_select` |
 
 `include_self: true` adds the query to its own context (latest). Set
 `apply_to: query_and_context` if the gene KO should be applied to every

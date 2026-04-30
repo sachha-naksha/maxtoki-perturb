@@ -51,11 +51,12 @@ from pathlib import Path
 from typing import Any, Literal, Optional
 
 
-ContextStrategy = Literal["self", "prefix", "all_in_group", "explicit"]
+ContextStrategy = Literal["self", "prefix", "all_in_group", "explicit", "pool"]
 QueryStrategy = Literal["each_cell", "latest_per_group"]
 Direction = Literal["inhibit", "delete", "overexpress"]
 ApplyTo = Literal["query", "query_and_context"]
 Ordering = Literal["pseudotime", "obs_index"]
+PoolPick = Literal["first", "last", "evenly_spaced", "random"]
 
 
 @dataclass
@@ -68,12 +69,25 @@ class DataSpec:
 
 
 @dataclass
+class PoolSelect:
+    """How to choose context cells from a filtered pool (one pool, reused for every query)."""
+    n: int = 3                          # number of context cells to pick
+    pick: PoolPick = "evenly_spaced"    # first | last | evenly_spaced | random
+    sort_by: Ordering = "pseudotime"    # how to sort the pool before picking
+    seed: int = 0
+
+
+@dataclass
 class ContextSpec:
     strategy: ContextStrategy = "self"
     max_cells: int = 4
     ordering: Ordering = "pseudotime"
     include_self: bool = False
     explicit_indices: Optional[list[int]] = None
+    # Used when strategy=="pool": filter cells by obs columns, then pick.
+    # Example: pool_filter={"donor_age": [34]} or {"donor_id": ["GTEX-001"]}
+    pool_filter: dict[str, list[Any]] = field(default_factory=dict)
+    pool_select: Optional[PoolSelect] = None
 
 
 @dataclass
@@ -112,6 +126,13 @@ class ExperimentSpec:
             )
         if c.strategy == "explicit" and not c.explicit_indices:
             raise ValueError("context.strategy=explicit requires context.explicit_indices.")
+        if c.strategy == "pool":
+            if not c.pool_filter:
+                raise ValueError("context.strategy=pool requires context.pool_filter (e.g. {'donor_age': [34]}).")
+            if c.pool_select is None:
+                raise ValueError("context.strategy=pool requires context.pool_select.")
+            if c.pool_select.sort_by == "pseudotime" and not self.data.pseudotime_col:
+                raise ValueError("context.pool_select.sort_by=pseudotime requires data.pseudotime_col.")
         if c.max_cells < 1:
             raise ValueError("context.max_cells must be >= 1")
         if not (p.gene or p.gene_symbol):
@@ -140,7 +161,11 @@ def load_spec(path: str | Path) -> ExperimentSpec:
 
 def spec_from_dict(raw: dict) -> ExperimentSpec:
     data = DataSpec(**raw["data"])
-    context = ContextSpec(**raw.get("context", {}))
+    context_raw = dict(raw.get("context", {}))
+    pool_select_raw = context_raw.pop("pool_select", None)
+    if pool_select_raw:
+        context_raw["pool_select"] = PoolSelect(**pool_select_raw)
+    context = ContextSpec(**context_raw)
     query_raw = raw.get("query", {})
     query = QuerySpec(
         strategy=query_raw.get("strategy", "each_cell"),

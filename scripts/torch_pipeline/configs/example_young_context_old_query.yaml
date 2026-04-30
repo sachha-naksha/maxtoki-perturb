@@ -1,0 +1,39 @@
+# Cross-donor: 3 context cells from a 34-year-old donor, score every cell from
+# the 80-year-old donor as query. The pool is computed once and reused for
+# every query, so the model sees the SAME young trajectory on every row -
+# only the query cell (and its perturbation) varies.
+#
+# This is the recommended setup for an aging-readout: the predicted Δt has
+# meaningful "years of aging" interpretation because the time axis the model
+# was trained on is donor-age based.
+data:
+  h5ad: ./data/4111_cells.h5ad
+  pseudotime_col: pseudotime         # used to pick / order context cells
+  group_col: donor_id                # not used by 'pool' strategy, but fine to keep
+  cell_id_col: null
+  count_col: n_counts
+
+context:
+  strategy: pool
+  max_cells: 3                       # final cap (also bounds pool_select.n)
+  ordering: pseudotime               # ascending pseudotime in the input
+  pool_filter:
+    donor_age: [34]                  # OR donor_id: ["GTEX-001"] / cell_type: [...]
+  pool_select:
+    n: 3                             # pick this many cells from the pool
+    pick: evenly_spaced              # first | last | evenly_spaced | random
+    sort_by: pseudotime              # how to sort the pool before picking
+    seed: 0                          # only used when pick=random
+
+query:
+  strategy: each_cell
+  filter_obs:
+    donor_age: [80]                  # only score 80-year-old cells
+
+perturbation:
+  gene_symbol: ZLX1
+  gene: null
+  direction: inhibit
+  apply_to: query                    # don't perturb the young context
+
+seq_length: 16384

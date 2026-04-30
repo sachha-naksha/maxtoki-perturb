@@ -147,10 +147,61 @@ def _select_queries(picks: list[_CellPick], spec: ExperimentSpec) -> list[_CellP
     raise ValueError(f"unknown query.strategy: {spec.query.strategy}")
 
 
+def _resolve_pool(
+    all_cells: list[_CellPick],
+    adata,
+    cspec: ContextSpec,
+) -> list[_CellPick]:
+    """Resolve the pool ONCE (it's identical across queries when strategy=='pool')."""
+    keep = np.ones(len(all_cells), dtype=bool)
+    for col, allowed in cspec.pool_filter.items():
+        if col not in adata.obs.columns:
+            raise KeyError(f"context.pool_filter column {col!r} not in adata.obs")
+        col_vals = adata.obs[col].values
+        allowed_set = set(allowed)
+        for i, p in enumerate(all_cells):
+            if col_vals[p.idx] not in allowed_set:
+                keep[i] = False
+    pool = [p for p, k in zip(all_cells, keep) if k]
+    if not pool:
+        raise RuntimeError(f"context.pool_filter matched 0 cells: {cspec.pool_filter}")
+
+    sel = cspec.pool_select
+    assert sel is not None
+    if sel.sort_by == "pseudotime":
+        pool = sorted(pool, key=lambda p: p.pseudotime)
+    elif sel.sort_by == "obs_index":
+        pool = sorted(pool, key=lambda p: p.idx)
+    else:
+        raise ValueError(f"unknown pool_select.sort_by: {sel.sort_by}")
+
+    n = min(sel.n, len(pool))
+    if sel.pick == "first":
+        chosen = pool[:n]
+    elif sel.pick == "last":
+        chosen = pool[-n:]
+    elif sel.pick == "evenly_spaced":
+        idxs = np.linspace(0, len(pool) - 1, n).round().astype(int).tolist()
+        chosen = [pool[i] for i in idxs]
+    elif sel.pick == "random":
+        rng = np.random.default_rng(sel.seed)
+        idxs = sorted(rng.choice(len(pool), size=n, replace=False).tolist())
+        chosen = [pool[i] for i in idxs]
+    else:
+        raise ValueError(f"unknown pool_select.pick: {sel.pick}")
+
+    if cspec.ordering == "pseudotime":
+        chosen = sorted(chosen, key=lambda p: p.pseudotime)
+    elif cspec.ordering == "obs_index":
+        chosen = sorted(chosen, key=lambda p: p.idx)
+    return chosen
+
+
 def _select_context(
     query: _CellPick,
     all_cells: list[_CellPick],
     cspec: ContextSpec,
+    pool_cache: Optional[list[_CellPick]] = None,
 ) -> list[_CellPick]:
     if cspec.strategy == "self":
         return [query]
@@ -160,6 +211,12 @@ def _select_context(
         ctx = [idx_to_pick[i] for i in cspec.explicit_indices or [] if i in idx_to_pick]
         # Preserve user-supplied order; truncate to keep latest max_cells
         return ctx[-cspec.max_cells:]
+
+    if cspec.strategy == "pool":
+        if pool_cache is None:
+            raise RuntimeError("pool_cache must be provided when strategy=='pool'")
+        # Pool is identical across queries; just respect max_cells as a final cap.
+        return pool_cache[-cspec.max_cells:]
 
     same_group = [p for p in all_cells if p.group == query.group]
     if cspec.strategy == "prefix":
@@ -299,6 +356,14 @@ def build_paired_dataset(
     if not queries:
         raise RuntimeError("query selection produced 0 cells - check filters / strategy.")
 
+    pool_cache: Optional[list[_CellPick]] = None
+    if spec.context.strategy == "pool":
+        pool_cache = _resolve_pool(all_picks, adata, spec.context)
+        print(
+            f"[info] pool resolved to {len(pool_cache)} cells: "
+            f"{[(p.cell_id, round(p.pseudotime, 3)) for p in pool_cache]}"
+        )
+
     apply_ctx = (spec.perturbation.apply_to == "query_and_context")
     direction = spec.perturbation.direction
 
@@ -308,7 +373,7 @@ def build_paired_dataset(
     cache: dict[int, list[int]] = {}  # idx -> tokenized cell
 
     for q in queries:
-        ctx_picks = _select_context(q, all_picks, spec.context)
+        ctx_picks = _select_context(q, all_picks, spec.context, pool_cache=pool_cache)
         per_cell_cap = _per_cell_max_len(spec.seq_length, n_context=len(ctx_picks))
 
         ctx_tokens: list[list[int]] = []
