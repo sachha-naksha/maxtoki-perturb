@@ -1,49 +1,12 @@
-# Python
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-
-# Distribution / packaging
-dist/
-build/
+*.pyc
+*.pyo
 *.egg-info/
-*.egg
-.eggs/
-
-# Virtual environments
-.venv/
-venv/
-ENV/
-
-# Testing
 .pytest_cache/
-.coverage
-htmlcov/
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Data files - not part of the package
+# build artifacts
+docs/build/
 *.npz
-*.parquet
-*.h5ad
-*.h5
-*.loom
+out/
 
-# Model weights
-*.safetensors
-*.bin
-*.pt
-*.pth
-
-# Environment / secrets
-.env
-.env.*
+# Keep release tarballs under dist/ in git so Delta runs can `git pull` them.

@@ -1,0 +1,29 @@
+# Pseudotime-aware trajectory: each query cell sees up to 4 prior cells
+# (same donor, smaller pseudotime, sorted ascending) as context.
+# This is the realistic temporal-prediction setup -- the model learns the
+# trajectory shape from past cells, then predicts the time delta to the
+# (possibly perturbed) query cell.
+data:
+  h5ad: ./data/4111_cells.h5ad
+  pseudotime_col: pseudotime         # adata.obs[<this>] - any monotone time/age column works
+  group_col: donor_id                # cells of the same donor share a trajectory
+  cell_id_col: null                  # null -> use adata.obs_names
+  count_col: n_counts
+
+context:
+  strategy: prefix                   # cells with pseudotime < query.pseudotime
+  max_cells: 4                       # cap to the 4 most recent prior cells
+  ordering: pseudotime               # ascending pseudotime in the context
+  include_self: false
+
+query:
+  strategy: each_cell                # one row per cell; use latest_per_group for one row per donor
+  filter_obs: {}                     # e.g. cell_type: ["fibroblast"] to score only one cell type
+
+perturbation:
+  gene_symbol: ZLX1                  # or set gene: ENSG00000109906
+  gene: null
+  direction: inhibit                 # inhibit | delete | overexpress
+  apply_to: query                    # query_and_context to perturb every cell in the row
+
+seq_length: 16384
