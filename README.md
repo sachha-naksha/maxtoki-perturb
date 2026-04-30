@@ -1,4 +1,4 @@
-# maxtoki-mlx
+# maxtoki-perturb
 
 In-silico dynamic ANY GENE perturbation modules for [MaxToki](https://www.biorxiv.org/content/10.64898/2026.03.30.715396v1), NVIDIA + Christina's temporal model for predicting cell aging trajectories.
 
