@@ -1,36 +1,54 @@
-"""Build a HuggingFace ``datasets.Dataset`` of TimeBetweenCells records for
-the BioNeMo ``MaxTokiDataModule.predict_dataset_path``.
+"""Spec-driven dataset prep for zero-shot perturbation scoring.
 
-Per cell c we emit two records (in the same row order, so they join trivially):
+Given an :class:`ExperimentSpec`, materialize two HuggingFace datasets
+(baseline + perturbed) where each row is one (group, query_cell) pair:
 
-    baseline:  [<bos>, c, <eos>, <boq>, c,             <eoq>, dummy_numeric]
-    perturbed: [<bos>, c, <eos>, <boq>, perturb(c, g), <eoq>, dummy_numeric]
+    baseline:  [<bos>, ctx_1, <eos>, ..., <bos>, ctx_K, <eos>,
+                <boq>, query, <eoq>, dummy_numeric]
+    perturbed: same structure, but query (and optionally context cells) have
+               the target gene perturbed via delete / inhibit / overexpress.
 
-The trailing ``dummy_numeric`` is required because the upstream
-``MaxTokiTokenizer.collate_batch_multitask`` calls ``determine_task_type``
-which needs a numeric token after ``<eoq>`` to classify the row as
-TimeBetweenCells. Its value never enters the prediction - the headless
-predict step gathers the model's regression output at the ``<eoq>``
-position only.
+Both datasets share row order so the scorer can join by index.
 
-The model's predicted timestep at ``<eoq>`` is interpreted as:
-    "how much time elapsed between the past cell (in <bos>...<eos>)
-     and the query cell (in <boq>...<eoq>)?"
+Cell selection rules
+--------------------
+- ``context.strategy=self``: K=1, context = [query]. Equivalent to the old
+  cell-vs-itself baseline.
+- ``context.strategy=prefix``: cells in the same group whose pseudotime is
+  strictly less than the query's pseudotime, sorted ascending. Optionally
+  include the query itself. Capped to ``max_cells`` (keep latest if exceeded).
+- ``context.strategy=all_in_group``: every cell in the same group, sorted
+  by pseudotime. Capped to ``max_cells``.
+- ``context.strategy=explicit``: use ``context.explicit_indices`` as the
+  context for *every* query (useful for fixed reference trajectories).
 
-For the baseline (cell vs. itself) the model should predict ~0 timesteps.
-For the perturbed (cell vs. inhibited cell) it predicts the model's
-estimate of how much aging the perturbation induced - this is the
-zero-shot signal we score.
+Length budget per cell
+----------------------
+With K context cells and 1 query, the input sequence costs::
+
+    K * (rve_len_with_bos_eos) + 1 + rve_len_query_only + 2_specials_around_query + 1_dummy
+  = K * rve_K + (rve_query - 2) + 4
+    where rve_K and rve_query include their own bos/eos.
+
+We solve for the per-cell RVE cap so the worst-case row fits in
+``spec.seq_length``.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Optional
 
 import numpy as np
 
-from .perturbation import Direction, perturb_tokens
+from .perturbation import perturb_tokens
+from .spec import ContextSpec, ExperimentSpec
 from .tokenizer import CellTokenizer, MODEL_INPUT_SIZE, pick_dummy_numeric_token
+
+
+# ---------------------------------------------------------------------------
+# h5ad helpers
+# ---------------------------------------------------------------------------
 
 
 def _resolve_ensembl_ids(adata) -> np.ndarray:
@@ -59,125 +77,279 @@ def _row_counts(adata, i: int) -> np.ndarray:
     return row
 
 
-def _tokenize_cells(
-    h5ad_path: str,
-    tokenizer: CellTokenizer,
-    rve_max_len: int,
-) -> Iterator[tuple[str, list[int]]]:
-    """Stream (cell_id, rve_tokens) for each cell.
-
-    ``rve_tokens`` is the rank-value gene token list including BOS/EOS, but
-    truncated so two copies + 4 special tokens (<boq>, <eoq>, +2 wrappers
-    aren't both needed since the second copy reuses the same tokens) fit in
-    the model context."""
-    import anndata as ad
-
-    adata = ad.read_h5ad(h5ad_path)
-    ensembl_ids = _resolve_ensembl_ids(adata)
-    cell_ids = adata.obs_names.astype(str).values
-    for i in range(adata.n_obs):
-        counts = _row_counts(adata, i)
-        n_counts_val = (
-            float(adata.obs["n_counts"].iloc[i])
-            if "n_counts" in adata.obs.columns
-            else None
-        )
-        toks = tokenizer.tokenize_expression(
-            ensembl_ids, counts, n_counts=n_counts_val, max_len=rve_max_len
-        )
-        yield str(cell_ids[i]), toks
+# ---------------------------------------------------------------------------
+# Cell selection per spec
+# ---------------------------------------------------------------------------
 
 
-def _build_record(
-    cell_tokens: list[int],
-    query_tokens: list[int],
+@dataclass
+class _CellPick:
+    """An (index_into_adata, group_key, pseudotime, cell_id) record."""
+    idx: int
+    group: object
+    pseudotime: float
+    cell_id: str
+
+
+def _enumerate_cells(adata, spec: ExperimentSpec) -> list[_CellPick]:
+    n = adata.n_obs
+    cell_id_col = spec.data.cell_id_col
+    if cell_id_col and cell_id_col in adata.obs.columns:
+        cell_ids = adata.obs[cell_id_col].astype(str).values
+    else:
+        cell_ids = adata.obs_names.astype(str).values
+
+    if spec.data.group_col:
+        if spec.data.group_col not in adata.obs.columns:
+            raise KeyError(f"group_col {spec.data.group_col!r} not in adata.obs")
+        groups = adata.obs[spec.data.group_col].values
+    else:
+        groups = np.zeros(n, dtype=int)
+
+    if spec.data.pseudotime_col:
+        if spec.data.pseudotime_col not in adata.obs.columns:
+            raise KeyError(f"pseudotime_col {spec.data.pseudotime_col!r} not in adata.obs")
+        ptimes = adata.obs[spec.data.pseudotime_col].astype(float).values
+    else:
+        ptimes = np.arange(n, dtype=float)
+
+    return [
+        _CellPick(idx=i, group=groups[i], pseudotime=float(ptimes[i]), cell_id=str(cell_ids[i]))
+        for i in range(n)
+    ]
+
+
+def _filter_query_pool(picks: list[_CellPick], adata, spec: ExperimentSpec) -> list[_CellPick]:
+    if not spec.query.filter_obs:
+        return list(picks)
+    keep = np.ones(len(picks), dtype=bool)
+    for col, allowed in spec.query.filter_obs.items():
+        if col not in adata.obs.columns:
+            raise KeyError(f"query.filter_obs column {col!r} not in adata.obs")
+        col_vals = adata.obs[col].values
+        allowed_set = set(allowed)
+        for i, pk in enumerate(picks):
+            if col_vals[pk.idx] not in allowed_set:
+                keep[i] = False
+    return [p for p, k in zip(picks, keep) if k]
+
+
+def _select_queries(picks: list[_CellPick], spec: ExperimentSpec) -> list[_CellPick]:
+    if spec.query.strategy == "each_cell":
+        return picks
+    if spec.query.strategy == "latest_per_group":
+        by_group: dict = {}
+        for p in picks:
+            cur = by_group.get(p.group)
+            if cur is None or p.pseudotime > cur.pseudotime:
+                by_group[p.group] = p
+        return list(by_group.values())
+    raise ValueError(f"unknown query.strategy: {spec.query.strategy}")
+
+
+def _select_context(
+    query: _CellPick,
+    all_cells: list[_CellPick],
+    cspec: ContextSpec,
+) -> list[_CellPick]:
+    if cspec.strategy == "self":
+        return [query]
+
+    if cspec.strategy == "explicit":
+        idx_to_pick = {p.idx: p for p in all_cells}
+        ctx = [idx_to_pick[i] for i in cspec.explicit_indices or [] if i in idx_to_pick]
+        # Preserve user-supplied order; truncate to keep latest max_cells
+        return ctx[-cspec.max_cells:]
+
+    same_group = [p for p in all_cells if p.group == query.group]
+    if cspec.strategy == "prefix":
+        cand = [p for p in same_group if p.pseudotime < query.pseudotime]
+    elif cspec.strategy == "all_in_group":
+        cand = [p for p in same_group if p.idx != query.idx]
+    else:
+        raise ValueError(f"unknown context.strategy: {cspec.strategy}")
+
+    if cspec.include_self and not any(p.idx == query.idx for p in cand):
+        cand = cand + [query]
+
+    if cspec.ordering == "pseudotime":
+        cand = sorted(cand, key=lambda p: p.pseudotime)
+    elif cspec.ordering == "obs_index":
+        cand = sorted(cand, key=lambda p: p.idx)
+    else:
+        raise ValueError(f"unknown context.ordering: {cspec.ordering}")
+
+    if not cand:
+        # pre-trajectory cell with no valid context: fall back to self so the
+        # row is still scoreable (will yield delta_t ~= 0 by construction)
+        return [query]
+    return cand[-cspec.max_cells:]
+
+
+# ---------------------------------------------------------------------------
+# Tokenization with shared length budget
+# ---------------------------------------------------------------------------
+
+
+def _tokenize_one_cell(adata, ensembl_ids, pick: _CellPick, tokenizer: CellTokenizer, max_len: int) -> list[int]:
+    counts = _row_counts(adata, pick.idx)
+    n_counts_val = None
+    return tokenizer.tokenize_expression(ensembl_ids, counts, n_counts=n_counts_val, max_len=max_len)
+
+
+def _per_cell_max_len(seq_length: int, n_context: int) -> int:
+    """How many tokens (incl. BOS/EOS) each cell can use so the row fits in seq_length.
+
+    Row layout:
+        K context cells:  K * rve_K
+        query block:      <boq> + (query_genes) + <eoq>  = (rve_query - 2) + 2 = rve_query
+        trailing dummy:   1
+    Total = K * rve_K + rve_query + 1 <= seq_length
+    Distribute equally: rve = (seq_length - 1) // (K + 1)
+    """
+    k = max(1, n_context)
+    rve = (seq_length - 1) // (k + 1)
+    return min(rve, MODEL_INPUT_SIZE)
+
+
+# ---------------------------------------------------------------------------
+# Record assembly
+# ---------------------------------------------------------------------------
+
+
+def _strip_bos_eos(toks: list[int], bos: int, eos: int) -> list[int]:
+    if not toks:
+        return toks
+    if toks[0] == bos:
+        toks = toks[1:]
+    if toks and toks[-1] == eos:
+        toks = toks[:-1]
+    return toks
+
+
+def _build_input_ids(
+    context_cells: list[list[int]],   # each is [<bos>, genes, <eos>]
+    query_cell: list[int],            # [<bos>, genes, <eos>]
     boq_id: int,
     eoq_id: int,
     dummy_numeric: int,
-    cell_id: str,
+    bos_id: int,
+    eos_id: int,
+) -> list[int]:
+    out: list[int] = []
+    for ctx in context_cells:
+        out.extend(ctx)
+    query_genes = _strip_bos_eos(query_cell, bos_id, eos_id)
+    out.append(boq_id)
+    out.extend(query_genes)
+    out.append(eoq_id)
+    out.append(dummy_numeric)
+    return out
+
+
+def _maybe_perturb(
+    cell_tokens: list[int],
+    apply: bool,
     gene_token: int,
-    direction: Direction,
-    is_baseline: bool,
-) -> dict:
-    # cell_tokens already includes <bos>...<eos>; query_tokens too. We strip
-    # the query's BOS/EOS (it's wrapped by <boq>/<eoq> instead).
-    bos = cell_tokens[0]
-    eos = cell_tokens[-1]
-    query_genes = query_tokens[1:-1]
-    input_ids = (
-        list(cell_tokens)               # [<bos>, ranked_genes, <eos>]
-        + [boq_id]                      # <boq>
-        + query_genes                   # ranked_genes' (= same or perturbed)
-        + [eoq_id]                      # <eoq>
-        + [dummy_numeric]               # dummy regression-label slot
-    )
-    # Sanity unused vars - kept explicit so future readers see grammar
-    del bos, eos
-    return {
-        "input_ids": input_ids,
-        "cell_id": cell_id,
-        "gene_token": int(gene_token),
-        "direction": direction,
-        "condition": "baseline" if is_baseline else "perturbed",
-        "n_query_tokens": len(query_genes),
-    }
+    direction: str,
+    bos: int,
+    eos: int,
+) -> list[int]:
+    if not apply:
+        return list(cell_tokens)
+    return perturb_tokens(cell_tokens, gene_token, direction, bos, eos)
+
+
+# ---------------------------------------------------------------------------
+# Public entry point
+# ---------------------------------------------------------------------------
 
 
 def build_paired_dataset(
-    h5ad_path: str | Path,
+    spec: ExperimentSpec,
     tokenizer: CellTokenizer,
-    gene_token: int,
-    direction: Direction = "inhibit",
-    out_dir_baseline: str | Path = "./out/baseline.dataset",
-    out_dir_perturbed: str | Path = "./out/perturbed.dataset",
-    seq_length: int = 16384,
+    out_dir_baseline: str | Path,
+    out_dir_perturbed: str | Path,
+    gene_token: Optional[int] = None,
+    gene_ensembl: Optional[str] = None,
 ) -> tuple[Path, Path, dict]:
-    """Tokenize all cells and write two HF datasets (baseline, perturbed).
-
-    Records in both datasets are emitted in the same order, so the i-th row
-    of one corresponds to the i-th row of the other.
-    """
+    """Materialize baseline + perturbed datasets per the experiment spec."""
+    import anndata as ad
     import datasets
 
+    spec.validate()
     if not tokenizer.has_temporal_tokens:
         raise RuntimeError(
             "tokenizer is missing <boq>/<eoq>/numeric tokens - point "
             "MAXTOKI_TOKEN_DICT at the full BioNeMo dictionary."
         )
-    boq_id = tokenizer.boq_id
-    eoq_id = tokenizer.eoq_id
-    bos_id = tokenizer.bos_id
-    eos_id = tokenizer.eos_id
+
+    if gene_token is None or gene_ensembl is None:
+        raise ValueError("Pass gene_token and gene_ensembl (resolved by the caller).")
+
+    adata = ad.read_h5ad(spec.data.h5ad)
+    ensembl_ids = _resolve_ensembl_ids(adata)
+    bos, eos = tokenizer.bos_id, tokenizer.eos_id
+    boq, eoq = tokenizer.boq_id, tokenizer.eoq_id
     dummy_numeric = pick_dummy_numeric_token(tokenizer)
 
-    # Each record uses 2x cell_tokens + 4 special tokens. Cap the per-cell
-    # rank-value length so that final input_ids <= seq_length.
-    # final_len = 2 * len(rve_tokens_including_bos_eos) - 2 + 3  (one BOS+EOS
-    # is shared between context and query payload, plus boq+eoq+dummy = 3)
-    # Solve for max RVE genes:
-    max_rve_len = (seq_length - 3 + 2) // 2
-    if max_rve_len < 4:
-        raise ValueError(f"seq_length={seq_length} too small for paired records")
-    rve_max_len = min(max_rve_len, MODEL_INPUT_SIZE)
+    all_picks = _enumerate_cells(adata, spec)
+    query_pool = _filter_query_pool(all_picks, adata, spec)
+    queries = _select_queries(query_pool, spec)
+    if not queries:
+        raise RuntimeError("query selection produced 0 cells - check filters / strategy.")
+
+    apply_ctx = (spec.perturbation.apply_to == "query_and_context")
+    direction = spec.perturbation.direction
 
     base_records: list[dict] = []
     pert_records: list[dict] = []
-    for cell_id, cell_tokens in _tokenize_cells(h5ad_path, tokenizer, rve_max_len):
-        perturbed_tokens = perturb_tokens(
-            cell_tokens, gene_token, direction, bos_id, eos_id
+
+    cache: dict[int, list[int]] = {}  # idx -> tokenized cell
+
+    for q in queries:
+        ctx_picks = _select_context(q, all_picks, spec.context)
+        per_cell_cap = _per_cell_max_len(spec.seq_length, n_context=len(ctx_picks))
+
+        ctx_tokens: list[list[int]] = []
+        for cp in ctx_picks:
+            key = (cp.idx, per_cell_cap)
+            if key not in cache:
+                cache[key] = _tokenize_one_cell(adata, ensembl_ids, cp, tokenizer, per_cell_cap)
+            ctx_tokens.append(cache[key])
+
+        q_key = (q.idx, per_cell_cap)
+        if q_key not in cache:
+            cache[q_key] = _tokenize_one_cell(adata, ensembl_ids, q, tokenizer, per_cell_cap)
+        query_tokens = cache[q_key]
+
+        ctx_tokens_pert = [
+            _maybe_perturb(t, apply_ctx, gene_token, direction, bos, eos) for t in ctx_tokens
+        ]
+        query_tokens_pert = perturb_tokens(query_tokens, gene_token, direction, bos, eos)
+
+        base_input_ids = _build_input_ids(
+            ctx_tokens, query_tokens, boq, eoq, dummy_numeric, bos, eos
         )
-        base_records.append(
-            _build_record(
-                cell_tokens, cell_tokens, boq_id, eoq_id, dummy_numeric,
-                cell_id, gene_token, direction, is_baseline=True,
-            )
+        pert_input_ids = _build_input_ids(
+            ctx_tokens_pert, query_tokens_pert, boq, eoq, dummy_numeric, bos, eos
         )
-        pert_records.append(
-            _build_record(
-                cell_tokens, perturbed_tokens, boq_id, eoq_id, dummy_numeric,
-                cell_id, gene_token, direction, is_baseline=False,
-            )
-        )
+
+        meta = {
+            "cell_id": q.cell_id,
+            "group": str(q.group),
+            "query_pseudotime": q.pseudotime,
+            "context_pseudotimes": [c.pseudotime for c in ctx_picks],
+            "context_cell_ids": [c.cell_id for c in ctx_picks],
+            "n_context_cells": len(ctx_picks),
+            "gene_token": int(gene_token),
+            "gene_ensembl": gene_ensembl,
+            "direction": direction,
+            "apply_to": spec.perturbation.apply_to,
+            "gene_present_in_query": gene_token in query_tokens,
+        }
+        base_records.append({**meta, "input_ids": base_input_ids, "condition": "baseline"})
+        pert_records.append({**meta, "input_ids": pert_input_ids, "condition": "perturbed"})
 
     out_dir_baseline = Path(out_dir_baseline)
     out_dir_perturbed = Path(out_dir_perturbed)
@@ -190,14 +362,19 @@ def build_paired_dataset(
     pert_ds.save_to_disk(str(out_dir_perturbed))
 
     summary = {
-        "n_cells": len(base_records),
-        "seq_length": seq_length,
-        "rve_max_len": rve_max_len,
-        "max_input_len": max(len(r["input_ids"]) for r in base_records),
+        "n_rows": len(base_records),
+        "seq_length": spec.seq_length,
+        "max_input_len_baseline": max(len(r["input_ids"]) for r in base_records),
+        "max_input_len_perturbed": max(len(r["input_ids"]) for r in pert_records),
+        "min_context_cells": min(r["n_context_cells"] for r in base_records),
+        "max_context_cells": max(r["n_context_cells"] for r in base_records),
+        "n_groups": len({r["group"] for r in base_records}),
+        "gene_ensembl": gene_ensembl,
         "gene_token": int(gene_token),
         "direction": direction,
-        "boq_id": boq_id,
-        "eoq_id": eoq_id,
-        "dummy_numeric_token_id": dummy_numeric,
+        "apply_to": spec.perturbation.apply_to,
+        "context_strategy": spec.context.strategy,
+        "query_strategy": spec.query.strategy,
+        "n_query_cells_with_gene": sum(r["gene_present_in_query"] for r in base_records),
     }
     return out_dir_baseline, out_dir_perturbed, summary
