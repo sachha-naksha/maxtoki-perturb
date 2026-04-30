@@ -1,0 +1,28 @@
+# Cell-vs-itself baseline (no pseudotime needed).
+# Each query cell uses ITSELF as the only context cell. The model sees
+# [<bos>, c, <eos>, <boq>, c_or_perturbed, <eoq>, dummy] and predicts the
+# time elapsed -- ~0 for baseline, |delta_t| for perturbed.
+data:
+  h5ad: ./data/4111_cells.h5ad
+  pseudotime_col: null
+  group_col: null
+  cell_id_col: null
+  count_col: n_counts
+
+context:
+  strategy: self
+  max_cells: 1
+  ordering: pseudotime
+  include_self: false
+
+query:
+  strategy: each_cell
+  filter_obs: {}
+
+perturbation:
+  gene_symbol: ZLX1
+  gene: null
+  direction: inhibit
+  apply_to: query
+
+seq_length: 16384

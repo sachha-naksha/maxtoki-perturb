@@ -1,0 +1,337 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>scripts.torch_pipeline.run_inhibit_temporal_mse &mdash; maxtoki-mlx torch_pipeline 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            maxtoki-mlx torch_pipeline
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../pipeline.html">Pipeline architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../spec_reference.html">Spec reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../delta_recipes.html">Running on Delta</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/spec.html">scripts.torch_pipeline.spec</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/tokenizer.html">scripts.torch_pipeline.tokenizer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/perturbation.html">scripts.torch_pipeline.perturbation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/dataset_prep.html">scripts.torch_pipeline.dataset_prep</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/predict_runner.html">scripts.torch_pipeline.predict_runner</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/score.html">scripts.torch_pipeline.score</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/run_inhibit_temporal_mse.html">scripts.torch_pipeline.run_inhibit_temporal_mse</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">maxtoki-mlx torch_pipeline</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">scripts.torch_pipeline.run_inhibit_temporal_mse</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for scripts.torch_pipeline.run_inhibit_temporal_mse</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;End-to-end zero-shot perturbation -&gt; temporal MSE driver.</span>
+
+<span class="sd">Pipeline (three stages):</span>
+<span class="sd">    1. Build paired (baseline, perturbed) HF datasets from the experiment</span>
+<span class="sd">       spec. The spec controls h5ad path, pseudotime / group columns, context</span>
+<span class="sd">       selection, query selection, and the gene KO target. See spec.py.</span>
+<span class="sd">    2. Run the upstream BioNeMo headless predict step on each dataset</span>
+<span class="sd">       (writes predictions__rank_*.pt under &lt;out&gt;/baseline_predictions and</span>
+<span class="sd">       &lt;out&gt;/perturbed_predictions).</span>
+<span class="sd">    3. Read both prediction dirs, compute per-row delta_t and dataset MSE.</span>
+
+<span class="sd">Stages 1 and 3 run anywhere (numpy / torch only). Stage 2 needs the BioNeMo</span>
+<span class="sd">container (bionemo + nemo + megatron).</span>
+
+<span class="sd">Usage::</span>
+
+<span class="sd">    python -m scripts.torch_pipeline.run_inhibit_temporal_mse \\</span>
+<span class="sd">        --spec ./configs/zlx1_inhibit.yaml \\</span>
+<span class="sd">        --ckpt-dir /weights/maxtoki-1b-bionemo \\</span>
+<span class="sd">        --tokenizer-path /weights/maxtoki-1b-bionemo/context/token_dictionary.json \\</span>
+<span class="sd">        --variant 1b \\</span>
+<span class="sd">        --out-dir ./out/zlx1</span>
+
+<span class="sd">CLI overrides: --gene / --gene-symbol / --direction / --seq-length /</span>
+<span class="sd">--h5ad let you tweak a single field of the spec without editing the YAML.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">argparse</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.dataset_prep</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_paired_dataset</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.score</span><span class="w"> </span><span class="kn">import</span> <span class="n">score</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.spec</span><span class="w"> </span><span class="kn">import</span> <span class="n">ExperimentSpec</span><span class="p">,</span> <span class="n">load_spec</span><span class="p">,</span> <span class="n">spec_from_dict</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.tokenizer</span><span class="w"> </span><span class="kn">import</span> <span class="n">CellTokenizer</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_gene_symbol</span><span class="p">(</span><span class="n">symbol</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="n">gene_name_id</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">Path</span><span class="p">(</span><span class="vm">__file__</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span><span class="o">.</span><span class="n">parents</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+        <span class="o">/</span> <span class="s2">&quot;src&quot;</span> <span class="o">/</span> <span class="s2">&quot;maxtoki_mlx&quot;</span> <span class="o">/</span> <span class="s2">&quot;resources&quot;</span> <span class="o">/</span> <span class="s2">&quot;gene_name_id.json&quot;</span>
+    <span class="p">)</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">gene_name_id</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">symbol_map</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">symbol</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">symbol_map</span><span class="p">:</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;unknown gene symbol: </span><span class="si">{</span><span class="n">symbol</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">symbol_map</span><span class="p">[</span><span class="n">symbol</span><span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_gene_for_spec</span><span class="p">(</span><span class="n">spec</span><span class="p">:</span> <span class="n">ExperimentSpec</span><span class="p">,</span> <span class="n">tokenizer</span><span class="p">:</span> <span class="n">CellTokenizer</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+    <span class="n">p</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">perturbation</span>
+    <span class="n">ensembl</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">gene</span> <span class="ow">or</span> <span class="p">(</span><span class="n">_resolve_gene_symbol</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">gene_symbol</span><span class="p">)</span> <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">gene_symbol</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">ensembl</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="s2">&quot;perturbation.gene or perturbation.gene_symbol must be set in the spec.&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">ensembl</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">token_dict</span><span class="p">:</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;gene </span><span class="si">{</span><span class="n">ensembl</span><span class="si">}</span><span class="s2"> not in token dictionary&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ensembl</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">tokenizer</span><span class="o">.</span><span class="n">token_dict</span><span class="p">[</span><span class="n">ensembl</span><span class="p">])</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_apply_cli_overrides</span><span class="p">(</span><span class="n">spec</span><span class="p">:</span> <span class="n">ExperimentSpec</span><span class="p">,</span> <span class="n">args</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ExperimentSpec</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">h5ad</span><span class="p">:</span>
+        <span class="n">spec</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">h5ad</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">h5ad</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">gene</span><span class="p">:</span>
+        <span class="n">spec</span><span class="o">.</span><span class="n">perturbation</span><span class="o">.</span><span class="n">gene</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">gene</span>
+        <span class="n">spec</span><span class="o">.</span><span class="n">perturbation</span><span class="o">.</span><span class="n">gene_symbol</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">gene_symbol</span><span class="p">:</span>
+        <span class="n">spec</span><span class="o">.</span><span class="n">perturbation</span><span class="o">.</span><span class="n">gene_symbol</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">gene_symbol</span>
+        <span class="n">spec</span><span class="o">.</span><span class="n">perturbation</span><span class="o">.</span><span class="n">gene</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">direction</span><span class="p">:</span>
+        <span class="n">spec</span><span class="o">.</span><span class="n">perturbation</span><span class="o">.</span><span class="n">direction</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">direction</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">seq_length</span><span class="p">:</span>
+        <span class="n">spec</span><span class="o">.</span><span class="n">seq_length</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">seq_length</span>
+    <span class="n">spec</span><span class="o">.</span><span class="n">validate</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">spec</span>
+
+
+<div class="viewcode-block" id="main">
+<a class="viewcode-back" href="../../../api/run_inhibit_temporal_mse.html#scripts.torch_pipeline.run_inhibit_temporal_mse.main">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">p</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">p</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--spec&quot;</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;YAML or JSON ExperimentSpec&quot;</span><span class="p">)</span>
+    <span class="n">p</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--ckpt-dir&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;BioNeMo distcp checkpoint dir (required unless --prep-only)&quot;</span><span class="p">)</span>
+    <span class="n">p</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--tokenizer-path&quot;</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Path to FULL token_dictionary_v1.json (with &lt;boq&gt;/&lt;eoq&gt;/numeric tokens)&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">p</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--variant&quot;</span><span class="p">,</span> <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;217m&quot;</span><span class="p">,</span> <span class="s2">&quot;1b&quot;</span><span class="p">],</span> <span class="n">default</span><span class="o">=</span><span class="s2">&quot;1b&quot;</span><span class="p">)</span>
+    <span class="n">p</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--out-dir&quot;</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="c1"># CLI override knobs (optional; spec wins otherwise)</span>
+    <span class="n">p</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--h5ad&quot;</span><span class="p">)</span>
+    <span class="n">p</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--gene&quot;</span><span class="p">)</span>
+    <span class="n">p</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--gene-symbol&quot;</span><span class="p">)</span>
+    <span class="n">p</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--direction&quot;</span><span class="p">,</span> <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;inhibit&quot;</span><span class="p">,</span> <span class="s2">&quot;delete&quot;</span><span class="p">,</span> <span class="s2">&quot;overexpress&quot;</span><span class="p">])</span>
+    <span class="n">p</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--seq-length&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+    <span class="c1"># Predict knobs</span>
+    <span class="n">p</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--micro-batch-size&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+    <span class="n">p</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--devices&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">p</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--tensor-parallel-size&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">p</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--pipeline-parallel-size&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">p</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--context-parallel-size&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">p</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--precision&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">&quot;bf16-mixed&quot;</span><span class="p">)</span>
+    <span class="n">p</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--prep-only&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">)</span>
+    <span class="n">p</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--score-only&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">)</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="n">spec</span> <span class="o">=</span> <span class="n">load_spec</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">spec</span><span class="p">)</span>
+    <span class="n">spec</span> <span class="o">=</span> <span class="n">_apply_cli_overrides</span><span class="p">(</span><span class="n">spec</span><span class="p">,</span> <span class="n">args</span><span class="p">)</span>
+
+    <span class="n">out_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">out_dir</span><span class="p">)</span>
+    <span class="n">out_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">base_ds_dir</span> <span class="o">=</span> <span class="n">out_dir</span> <span class="o">/</span> <span class="s2">&quot;baseline.dataset&quot;</span>
+    <span class="n">pert_ds_dir</span> <span class="o">=</span> <span class="n">out_dir</span> <span class="o">/</span> <span class="s2">&quot;perturbed.dataset&quot;</span>
+    <span class="n">base_pred_dir</span> <span class="o">=</span> <span class="n">out_dir</span> <span class="o">/</span> <span class="s2">&quot;baseline_predictions&quot;</span>
+    <span class="n">pert_pred_dir</span> <span class="o">=</span> <span class="n">out_dir</span> <span class="o">/</span> <span class="s2">&quot;perturbed_predictions&quot;</span>
+
+    <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;MAXTOKI_TOKEN_DICT&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">tokenizer_path</span><span class="p">)</span>
+    <span class="n">tokenizer</span> <span class="o">=</span> <span class="n">CellTokenizer</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">has_temporal_tokens</span><span class="p">:</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span>
+            <span class="s2">&quot;Tokenizer dict has no &lt;boq&gt;/&lt;eoq&gt;/numeric tokens. Pass the full &quot;</span>
+            <span class="s2">&quot;BioNeMo token_dictionary via --tokenizer-path.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">ensembl</span><span class="p">,</span> <span class="n">gene_token</span> <span class="o">=</span> <span class="n">_resolve_gene_for_spec</span><span class="p">(</span><span class="n">spec</span><span class="p">,</span> <span class="n">tokenizer</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[info] gene=</span><span class="si">{</span><span class="n">ensembl</span><span class="si">}</span><span class="s2"> token=</span><span class="si">{</span><span class="n">gene_token</span><span class="si">}</span><span class="s2"> direction=</span><span class="si">{</span><span class="n">spec</span><span class="o">.</span><span class="n">perturbation</span><span class="o">.</span><span class="n">direction</span><span class="si">}</span><span class="s2"> &quot;</span>
+          <span class="sa">f</span><span class="s2">&quot;context.strategy=</span><span class="si">{</span><span class="n">spec</span><span class="o">.</span><span class="n">context</span><span class="o">.</span><span class="n">strategy</span><span class="si">}</span><span class="s2"> query.strategy=</span><span class="si">{</span><span class="n">spec</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">strategy</span><span class="si">}</span><span class="s2"> &quot;</span>
+          <span class="sa">f</span><span class="s2">&quot;seq_length=</span><span class="si">{</span><span class="n">spec</span><span class="o">.</span><span class="n">seq_length</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">out_dir</span> <span class="o">/</span> <span class="s2">&quot;spec.resolved.json&quot;</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">({</span><span class="o">**</span><span class="n">spec</span><span class="o">.</span><span class="n">to_dict</span><span class="p">(),</span> <span class="s2">&quot;gene_ensembl&quot;</span><span class="p">:</span> <span class="n">ensembl</span><span class="p">,</span> <span class="s2">&quot;gene_token&quot;</span><span class="p">:</span> <span class="n">gene_token</span><span class="p">},</span> <span class="n">f</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">score_only</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[info] building paired datasets under </span><span class="si">{</span><span class="n">out_dir</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">prep_summary</span> <span class="o">=</span> <span class="n">build_paired_dataset</span><span class="p">(</span>
+            <span class="n">spec</span><span class="o">=</span><span class="n">spec</span><span class="p">,</span>
+            <span class="n">tokenizer</span><span class="o">=</span><span class="n">tokenizer</span><span class="p">,</span>
+            <span class="n">out_dir_baseline</span><span class="o">=</span><span class="n">base_ds_dir</span><span class="p">,</span>
+            <span class="n">out_dir_perturbed</span><span class="o">=</span><span class="n">pert_ds_dir</span><span class="p">,</span>
+            <span class="n">gene_token</span><span class="o">=</span><span class="n">gene_token</span><span class="p">,</span>
+            <span class="n">gene_ensembl</span><span class="o">=</span><span class="n">ensembl</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">out_dir</span> <span class="o">/</span> <span class="s2">&quot;prep_summary.json&quot;</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">prep_summary</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[info] prep_summary=</span><span class="si">{</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">prep_summary</span><span class="p">,</span><span class="w"> </span><span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">prep_only</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[info] --prep-only set; stopping after dataset build.&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">ckpt_dir</span><span class="p">:</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="s2">&quot;--ckpt-dir is required unless --prep-only is set.&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">score_only</span><span class="p">:</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">.predict_runner</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_headless_predict</span>
+
+        <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">ds_dir</span><span class="p">,</span> <span class="n">pred_dir</span> <span class="ow">in</span> <span class="p">[</span>
+            <span class="p">(</span><span class="s2">&quot;baseline&quot;</span><span class="p">,</span> <span class="n">base_ds_dir</span><span class="p">,</span> <span class="n">base_pred_dir</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;perturbed&quot;</span><span class="p">,</span> <span class="n">pert_ds_dir</span><span class="p">,</span> <span class="n">pert_pred_dir</span><span class="p">),</span>
+        <span class="p">]:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[info] running BioNeMo predict on </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2"> dataset&quot;</span><span class="p">)</span>
+            <span class="n">run_headless_predict</span><span class="p">(</span>
+                <span class="n">ckpt_dir</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">ckpt_dir</span><span class="p">,</span>
+                <span class="n">tokenizer_path</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">tokenizer_path</span><span class="p">,</span>
+                <span class="n">data_path</span><span class="o">=</span><span class="n">ds_dir</span><span class="p">,</span>
+                <span class="n">output_dir</span><span class="o">=</span><span class="n">pred_dir</span><span class="p">,</span>
+                <span class="n">variant</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">variant</span><span class="p">,</span>
+                <span class="n">seq_length</span><span class="o">=</span><span class="n">spec</span><span class="o">.</span><span class="n">seq_length</span><span class="p">,</span>
+                <span class="n">micro_batch_size</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">micro_batch_size</span><span class="p">,</span>
+                <span class="n">devices</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">devices</span><span class="p">,</span>
+                <span class="n">tensor_parallel_size</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">tensor_parallel_size</span><span class="p">,</span>
+                <span class="n">pipeline_model_parallel_size</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">pipeline_parallel_size</span><span class="p">,</span>
+                <span class="n">context_parallel_size</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">context_parallel_size</span><span class="p">,</span>
+                <span class="n">precision</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">precision</span><span class="p">,</span>
+            <span class="p">)</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[info] scoring&quot;</span><span class="p">)</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">datasets</span>
+
+    <span class="n">base_ds</span> <span class="o">=</span> <span class="n">datasets</span><span class="o">.</span><span class="n">load_from_disk</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">base_ds_dir</span><span class="p">))</span>
+    <span class="n">gene_present</span> <span class="o">=</span> <span class="p">[</span><span class="nb">bool</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;gene_present_in_query&quot;</span><span class="p">])</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">base_ds</span><span class="p">]</span>
+    <span class="n">paired_metadata</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;gene_present&quot;</span><span class="p">:</span> <span class="n">gene_present</span><span class="p">,</span>
+        <span class="s2">&quot;direction&quot;</span><span class="p">:</span> <span class="n">spec</span><span class="o">.</span><span class="n">perturbation</span><span class="o">.</span><span class="n">direction</span><span class="p">,</span>
+        <span class="s2">&quot;gene_ensembl&quot;</span><span class="p">:</span> <span class="n">ensembl</span><span class="p">,</span>
+        <span class="s2">&quot;gene_token&quot;</span><span class="p">:</span> <span class="n">gene_token</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="n">base</span><span class="p">,</span> <span class="n">pert</span><span class="p">,</span> <span class="n">delta</span><span class="p">,</span> <span class="n">summary</span> <span class="o">=</span> <span class="n">score</span><span class="p">(</span>
+        <span class="n">baseline_dir</span><span class="o">=</span><span class="n">base_pred_dir</span><span class="p">,</span>
+        <span class="n">perturbed_dir</span><span class="o">=</span><span class="n">pert_pred_dir</span><span class="p">,</span>
+        <span class="n">paired_metadata</span><span class="o">=</span><span class="n">paired_metadata</span><span class="p">,</span>
+        <span class="n">out_path</span><span class="o">=</span><span class="n">out_dir</span> <span class="o">/</span> <span class="s2">&quot;scores.npz&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">summary_dict</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;n_rows&quot;</span><span class="p">:</span> <span class="n">summary</span><span class="o">.</span><span class="n">n_cells</span><span class="p">,</span>
+        <span class="s2">&quot;n_rows_with_gene_in_query&quot;</span><span class="p">:</span> <span class="n">summary</span><span class="o">.</span><span class="n">n_cells_with_gene</span><span class="p">,</span>
+        <span class="s2">&quot;mean_mse&quot;</span><span class="p">:</span> <span class="n">summary</span><span class="o">.</span><span class="n">mean_mse</span><span class="p">,</span>
+        <span class="s2">&quot;mean_mse_present&quot;</span><span class="p">:</span> <span class="n">summary</span><span class="o">.</span><span class="n">mean_mse_present</span><span class="p">,</span>
+        <span class="s2">&quot;mean_delta_t&quot;</span><span class="p">:</span> <span class="n">summary</span><span class="o">.</span><span class="n">mean_delta_t</span><span class="p">,</span>
+        <span class="s2">&quot;mean_delta_t_present&quot;</span><span class="p">:</span> <span class="n">summary</span><span class="o">.</span><span class="n">mean_delta_t_present</span><span class="p">,</span>
+        <span class="s2">&quot;abs_mean_delta_t&quot;</span><span class="p">:</span> <span class="n">summary</span><span class="o">.</span><span class="n">abs_mean_delta_t</span><span class="p">,</span>
+        <span class="s2">&quot;gene_ensembl&quot;</span><span class="p">:</span> <span class="n">ensembl</span><span class="p">,</span>
+        <span class="s2">&quot;gene_token&quot;</span><span class="p">:</span> <span class="n">gene_token</span><span class="p">,</span>
+        <span class="s2">&quot;direction&quot;</span><span class="p">:</span> <span class="n">spec</span><span class="o">.</span><span class="n">perturbation</span><span class="o">.</span><span class="n">direction</span><span class="p">,</span>
+        <span class="s2">&quot;context_strategy&quot;</span><span class="p">:</span> <span class="n">spec</span><span class="o">.</span><span class="n">context</span><span class="o">.</span><span class="n">strategy</span><span class="p">,</span>
+        <span class="s2">&quot;query_strategy&quot;</span><span class="p">:</span> <span class="n">spec</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">strategy</span><span class="p">,</span>
+        <span class="s2">&quot;variant&quot;</span><span class="p">:</span> <span class="n">args</span><span class="o">.</span><span class="n">variant</span><span class="p">,</span>
+        <span class="s2">&quot;seq_length&quot;</span><span class="p">:</span> <span class="n">spec</span><span class="o">.</span><span class="n">seq_length</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">out_dir</span> <span class="o">/</span> <span class="s2">&quot;summary.json&quot;</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">summary_dict</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;=== summary ===&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">summary_dict</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span></div>
+
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Srijit Iyer.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,43 @@
+# Aging-readout setup tailored to skm-multimodal 4111-cell dataset:
+# context = 3 cells from the 34 y/o donor (YM2, 1989 cells)
+# query   = each cell from the 80 y/o donors (OM6+OM9, 2000 cells)
+#
+# Run preprocess.py first to:
+#   - move layers['counts'] into .X
+#   - resolve var['features'] -> var['ensembl_id']
+#   - drop the 17 y/o (P26) cells we don't use here
+#   - drop vars without Ensembl mapping
+#
+# Pseudotime_typeI / Pseudotime_typeII are also present in the file but the
+# user said one cell type, so we use the unified 'Pseudotime' column.
+data:
+  h5ad: ./data/rna_adata.preprocessed.h5ad
+  pseudotime_col: Pseudotime
+  group_col: sample              # metadata to group outputs by
+  cell_id_col: null              # null -> obs_names (cell barcodes)
+  count_col: nCount_RNA          # tokenizer accepts any column name
+
+context:
+  strategy: pool
+  max_cells: 3                   # 3 cells from the 34y donor as context
+  ordering: pseudotime
+  pool_filter:
+    age: [34]                    # picks YM2's 1989 cells
+  pool_select:
+    n: 3
+    pick: evenly_spaced          # spread across the pseudotime range of YM2
+    sort_by: pseudotime
+    seed: 0
+
+query:
+  strategy: each_cell
+  filter_obs:
+    age: [80]                    # only score OM6 + OM9 cells (2000 queries)
+
+perturbation:
+  gene_symbol: ZLX1              # placeholder - swap per experiment
+  gene: null
+  direction: inhibit
+  apply_to: query
+
+seq_length: 16384

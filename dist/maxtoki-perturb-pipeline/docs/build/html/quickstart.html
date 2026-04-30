@@ -1,0 +1,225 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quickstart &mdash; maxtoki-mlx torch_pipeline 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=01f34227"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Pipeline architecture" href="pipeline.html" />
+    <link rel="prev" title="Installation" href="installation.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            maxtoki-mlx torch_pipeline
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User guide</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Quickstart</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#stage-your-data">1. Stage your data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#edit-the-spec">2. Edit the spec</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#run">3. Run</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#outputs">4. Outputs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#recommended-sanity-checks">5. Recommended sanity checks</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="pipeline.html">Pipeline architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="spec_reference.html">Spec reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="delta_recipes.html">Running on Delta</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/spec.html">scripts.torch_pipeline.spec</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/tokenizer.html">scripts.torch_pipeline.tokenizer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/perturbation.html">scripts.torch_pipeline.perturbation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/dataset_prep.html">scripts.torch_pipeline.dataset_prep</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/predict_runner.html">scripts.torch_pipeline.predict_runner</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/score.html">scripts.torch_pipeline.score</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/run_inhibit_temporal_mse.html">scripts.torch_pipeline.run_inhibit_temporal_mse</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">maxtoki-mlx torch_pipeline</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Quickstart</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/quickstart.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="quickstart">
+<h1>Quickstart<a class="headerlink" href="#quickstart" title="Link to this heading"></a></h1>
+<p>End-to-end run on the bundled “young context, old query” example spec.</p>
+<section id="stage-your-data">
+<h2>1. Stage your data<a class="headerlink" href="#stage-your-data" title="Link to this heading"></a></h2>
+<p>Drop your h5ad somewhere readable, e.g. <code class="docutils literal notranslate"><span class="pre">./data/4111_cells.h5ad</span></code>. Required
+columns:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">var[&quot;ensembl_id&quot;]</span></code> (or <code class="docutils literal notranslate"><span class="pre">var[&quot;feature_id&quot;]</span></code> / ENSG-prefixed <code class="docutils literal notranslate"><span class="pre">var_names</span></code>)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">obs[&quot;donor_age&quot;]</span></code> (or whatever you’ll filter on)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">obs[&quot;pseudotime&quot;]</span></code> if you use trajectory-based context strategies</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">obs[&quot;donor_id&quot;]</span></code> if you group cells into per-donor trajectories</p></li>
+<li><p>optional <code class="docutils literal notranslate"><span class="pre">obs[&quot;n_counts&quot;]</span></code></p></li>
+</ul>
+</section>
+<section id="edit-the-spec">
+<h2>2. Edit the spec<a class="headerlink" href="#edit-the-spec" title="Link to this heading"></a></h2>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="c1"># configs/example_young_context_old_query.yaml (excerpt)</span>
+<span class="nt">data</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">h5ad</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./data/4111_cells.h5ad</span>
+<span class="w">  </span><span class="nt">pseudotime_col</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pseudotime</span>
+<span class="w">  </span><span class="nt">group_col</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">donor_id</span>
+
+<span class="nt">context</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">strategy</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pool</span>
+<span class="w">  </span><span class="nt">pool_filter</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">donor_age</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">34</span><span class="p p-Indicator">]}</span>
+<span class="w">  </span><span class="nt">pool_select</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">n</span><span class="p">:</span><span class="w"> </span><span class="nv">3</span><span class="p p-Indicator">,</span><span class="nt"> pick</span><span class="p">:</span><span class="w"> </span><span class="nv">evenly_spaced</span><span class="p p-Indicator">,</span><span class="nt"> sort_by</span><span class="p">:</span><span class="w"> </span><span class="nv">pseudotime</span><span class="p p-Indicator">}</span>
+
+<span class="nt">query</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">strategy</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">each_cell</span>
+<span class="w">  </span><span class="nt">filter_obs</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">donor_age</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">80</span><span class="p p-Indicator">]}</span>
+
+<span class="nt">perturbation</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">gene_symbol</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ZLX1</span>
+<span class="w">  </span><span class="nt">direction</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">inhibit</span>
+<span class="w">  </span><span class="nt">apply_to</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">query</span>
+
+<span class="nt">seq_length</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">16384</span>
+</pre></div>
+</div>
+</section>
+<section id="run">
+<h2>3. Run<a class="headerlink" href="#run" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>scripts.torch_pipeline.run_inhibit_temporal_mse<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--spec<span class="w"> </span>scripts/torch_pipeline/configs/example_young_context_old_query.yaml<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--ckpt-dir<span class="w"> </span>/weights/maxtoki-1b-bionemo<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--tokenizer-path<span class="w"> </span>/weights/maxtoki-1b-bionemo/context/token_dictionary.json<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--variant<span class="w"> </span>1b<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--out-dir<span class="w"> </span>./out/zlx1
+</pre></div>
+</div>
+</section>
+<section id="outputs">
+<h2>4. Outputs<a class="headerlink" href="#outputs" title="Link to this heading"></a></h2>
+<p>Under <code class="docutils literal notranslate"><span class="pre">./out/zlx1/</span></code>:</p>
+<table class="docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">spec.resolved.json</span></code></p></td>
+<td><p>Fully-resolved spec (includes Ensembl ID)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">baseline.dataset/</span></code></p></td>
+<td><p>HF dataset fed to BioNeMo (baseline rows)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">perturbed.dataset/</span></code></p></td>
+<td><p>HF dataset (perturbed rows, same order)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">baseline_predictions/</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">predictions__rank_*.pt</span></code> (BioNeMo)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">perturbed_predictions/</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">predictions__rank_*.pt</span></code> (BioNeMo)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">scores.npz</span></code></p></td>
+<td><p>Per-row arrays + summary blob</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">prep_summary.json</span></code></p></td>
+<td><p>Dataset-build summary</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">summary.json</span></code></p></td>
+<td><p>Final dataset-level scoring summary</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="recommended-sanity-checks">
+<h2>5. Recommended sanity checks<a class="headerlink" href="#recommended-sanity-checks" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Always run a no-op control (<code class="docutils literal notranslate"><span class="pre">--direction</span> <span class="pre">delete</span></code> on a non-expressed gene)
+to verify <code class="docutils literal notranslate"><span class="pre">mean_delta_t</span> <span class="pre">≈</span> <span class="pre">0</span></code>.</p></li>
+<li><p>Run the same gene with <code class="docutils literal notranslate"><span class="pre">context.strategy:</span> <span class="pre">prefix</span></code> (within-donor) and
+<code class="docutils literal notranslate"><span class="pre">pool</span></code> (cross-donor young reference) and compare per-cell ranking. Strong
+perturbation effects should agree.</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">--prep-only</span></code> on a CPU box first to inspect tokenization.</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">--score-only</span></code> to re-score after adjusting the spec without burning
+GPU on prediction.</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="installation.html" class="btn btn-neutral float-left" title="Installation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="pipeline.html" class="btn btn-neutral float-right" title="Pipeline architecture" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Srijit Iyer.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

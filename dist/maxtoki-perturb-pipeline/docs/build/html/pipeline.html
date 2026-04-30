@@ -1,0 +1,222 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pipeline architecture &mdash; maxtoki-mlx torch_pipeline 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=01f34227"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Spec reference" href="spec_reference.html" />
+    <link rel="prev" title="Quickstart" href="quickstart.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            maxtoki-mlx torch_pipeline
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User guide</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Pipeline architecture</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#why-the-row-layout-looks-like-that">Why the row layout looks like that</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-the-per-cell-rank-value-cap-is-computed">How the per-cell rank-value cap is computed</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#why-the-same-multitask-config-covers-both-217m-and-1b">Why the same multitask config covers both 217M and 1B</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#three-context-strategies-three-different-questions">Three context strategies, three different questions</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="spec_reference.html">Spec reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="delta_recipes.html">Running on Delta</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/spec.html">scripts.torch_pipeline.spec</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/tokenizer.html">scripts.torch_pipeline.tokenizer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/perturbation.html">scripts.torch_pipeline.perturbation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/dataset_prep.html">scripts.torch_pipeline.dataset_prep</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/predict_runner.html">scripts.torch_pipeline.predict_runner</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/score.html">scripts.torch_pipeline.score</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/run_inhibit_temporal_mse.html">scripts.torch_pipeline.run_inhibit_temporal_mse</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">maxtoki-mlx torch_pipeline</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Pipeline architecture</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/pipeline.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="pipeline-architecture">
+<h1>Pipeline architecture<a class="headerlink" href="#pipeline-architecture" title="Link to this heading"></a></h1>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">spec</span> <span class="o">+</span> <span class="n">h5ad</span>
+     <span class="o">|</span>
+     <span class="n">v</span>
+<span class="o">+-----------------------------+</span>
+<span class="o">|</span> <span class="n">dataset_prep</span>                <span class="o">|</span>  <span class="n">scripts</span><span class="o">/</span><span class="n">torch_pipeline</span><span class="o">/</span><span class="n">dataset_prep</span><span class="o">.</span><span class="n">py</span>
+<span class="o">|</span> <span class="k">for</span> <span class="n">each</span> <span class="n">query</span> <span class="n">cell</span> <span class="n">q</span><span class="p">:</span>      <span class="o">|</span>
+<span class="o">|</span>   <span class="n">ctx</span> <span class="o">=</span> <span class="n">select_context</span><span class="p">(</span><span class="n">q</span><span class="p">)</span>   <span class="o">|</span>  <span class="n">per</span> <span class="n">spec</span><span class="o">.</span><span class="n">context</span><span class="o">.</span><span class="n">strategy</span>
+<span class="o">|</span>   <span class="n">base_ids</span> <span class="o">=</span> <span class="p">[</span><span class="o">&lt;</span><span class="n">bos</span><span class="o">&gt;</span> <span class="n">ctx</span> <span class="o">&lt;</span><span class="n">eos</span><span class="o">&gt;</span><span class="p">]</span> <span class="n">x</span> <span class="n">K</span> <span class="o">+</span> <span class="p">[</span><span class="o">&lt;</span><span class="n">boq</span><span class="o">&gt;</span> <span class="n">q</span> <span class="o">&lt;</span><span class="n">eoq</span><span class="o">&gt;</span> <span class="n">dummy</span><span class="p">]</span>
+<span class="o">|</span>   <span class="n">pert_ids</span> <span class="o">=</span> <span class="n">same</span><span class="p">,</span> <span class="n">but</span> <span class="n">perturb</span><span class="p">(</span><span class="n">gene</span><span class="p">,</span> <span class="n">direction</span><span class="p">)</span> <span class="n">on</span> <span class="n">q</span>
+<span class="o">|</span>              <span class="p">(</span><span class="ow">and</span> <span class="n">ctx</span> <span class="k">if</span> <span class="n">apply_to</span> <span class="o">==</span> <span class="n">query_and_context</span><span class="p">)</span>
+<span class="o">+-----------------------------+</span>
+     <span class="o">|</span>              <span class="o">|</span>
+     <span class="n">v</span>              <span class="n">v</span>
+<span class="n">baseline</span><span class="o">.</span><span class="n">dataset</span>  <span class="n">perturbed</span><span class="o">.</span><span class="n">dataset</span>    <span class="p">(</span><span class="n">HuggingFace</span><span class="p">,</span> <span class="n">same</span> <span class="n">row</span> <span class="n">order</span><span class="p">)</span>
+     <span class="o">|</span>              <span class="o">|</span>
+     <span class="n">v</span>              <span class="n">v</span>
+<span class="o">+-----------------------------+</span>
+<span class="o">|</span> <span class="n">predict_runner</span>              <span class="o">|</span>  <span class="n">scripts</span><span class="o">/</span><span class="n">torch_pipeline</span><span class="o">/</span><span class="n">predict_runner</span><span class="o">.</span><span class="n">py</span>
+<span class="o">|</span> <span class="n">bionemo</span><span class="o">.</span><span class="n">maxtoki</span><span class="o">.</span><span class="n">predict</span>     <span class="o">|</span>
+<span class="o">|</span> <span class="p">(</span><span class="n">headless</span> <span class="n">TimeBetweenCells</span><span class="p">)</span> <span class="o">|</span>
+<span class="o">|</span> <span class="n">x2</span>  <span class="p">(</span><span class="n">one</span> <span class="n">per</span> <span class="n">dataset</span><span class="p">)</span>       <span class="o">|</span>
+<span class="o">+-----------------------------+</span>
+     <span class="o">|</span>              <span class="o">|</span>
+     <span class="n">v</span>              <span class="n">v</span>
+<span class="n">baseline_predictions</span><span class="o">/</span>    <span class="n">perturbed_predictions</span><span class="o">/</span>
+<span class="n">predictions__rank_</span><span class="o">*.</span><span class="n">pt</span>   <span class="n">predictions__rank_</span><span class="o">*.</span><span class="n">pt</span>
+     <span class="o">|</span>              <span class="o">|</span>
+     <span class="o">+------+-------+</span>
+            <span class="n">v</span>
+<span class="o">+-----------------------------+</span>
+<span class="o">|</span> <span class="n">score</span>                       <span class="o">|</span>  <span class="n">scripts</span><span class="o">/</span><span class="n">torch_pipeline</span><span class="o">/</span><span class="n">score</span><span class="o">.</span><span class="n">py</span>
+<span class="o">|</span> <span class="n">delta_t</span> <span class="o">=</span> <span class="n">pert_t</span> <span class="o">-</span> <span class="n">base_t</span>   <span class="o">|</span>
+<span class="o">|</span> <span class="n">per_cell_mse</span> <span class="o">=</span> <span class="n">delta_t</span><span class="o">**</span><span class="mi">2</span>   <span class="o">|</span>
+<span class="o">+-----------------------------+</span>
+            <span class="o">|</span>
+            <span class="n">v</span>
+<span class="n">scores</span><span class="o">.</span><span class="n">npz</span> <span class="o">+</span> <span class="n">summary</span><span class="o">.</span><span class="n">json</span>
+</pre></div>
+</div>
+<section id="why-the-row-layout-looks-like-that">
+<h2>Why the row layout looks like that<a class="headerlink" href="#why-the-row-layout-looks-like-that" title="Link to this heading"></a></h2>
+<p>Each row’s <code class="docutils literal notranslate"><span class="pre">input_ids</span></code> is:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">[</span><span class="o">&lt;</span><span class="n">bos</span><span class="o">&gt;</span> <span class="n">ctx_1</span> <span class="o">&lt;</span><span class="n">eos</span><span class="o">&gt;</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="o">&lt;</span><span class="n">bos</span><span class="o">&gt;</span> <span class="n">ctx_K</span> <span class="o">&lt;</span><span class="n">eos</span><span class="o">&gt;</span><span class="p">,</span> <span class="o">&lt;</span><span class="n">boq</span><span class="o">&gt;</span> <span class="n">query</span> <span class="o">&lt;</span><span class="n">eoq</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">dummy_numeric</span><span class="p">]</span>
+</pre></div>
+</div>
+<ul class="simple">
+<li><p>The K context cells, each wrapped in <code class="docutils literal notranslate"><span class="pre">&lt;bos&gt;</span></code> / <code class="docutils literal notranslate"><span class="pre">&lt;eos&gt;</span></code>, are exactly the
+multi-cell paragraph format MaxToki was trained on.</p></li>
+<li><p>The query cell is wrapped in <code class="docutils literal notranslate"><span class="pre">&lt;boq&gt;</span></code> / <code class="docutils literal notranslate"><span class="pre">&lt;eoq&gt;</span></code> – the upstream
+TimeBetweenCells task header – so the model knows it’s the cell whose
+time delta should be predicted.</p></li>
+<li><p>The trailing numeric token is required only because the upstream
+<code class="docutils literal notranslate"><span class="pre">MaxTokiTokenizer.collate_batch_multitask</span></code> calls <code class="docutils literal notranslate"><span class="pre">determine_task_type</span></code>,
+which looks at the token immediately after <code class="docutils literal notranslate"><span class="pre">&lt;eoq&gt;</span></code>. Its value never
+enters the prediction; the headless predict step gathers the regression
+output at the <code class="docutils literal notranslate"><span class="pre">&lt;eoq&gt;</span></code> position.</p></li>
+</ul>
+</section>
+<section id="how-the-per-cell-rank-value-cap-is-computed">
+<h2>How the per-cell rank-value cap is computed<a class="headerlink" href="#how-the-per-cell-rank-value-cap-is-computed" title="Link to this heading"></a></h2>
+<p>For <code class="docutils literal notranslate"><span class="pre">K</span></code> context cells + 1 query, distributed equally:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">per_cell_max_len</span> <span class="o">=</span> <span class="p">(</span><span class="n">seq_length</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">//</span> <span class="p">(</span><span class="n">K</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>So at <code class="docutils literal notranslate"><span class="pre">seq_length=16384</span></code> with 4 context cells, each cell can use up to
+<code class="docutils literal notranslate"><span class="pre">(16384</span> <span class="pre">-</span> <span class="pre">1)</span> <span class="pre">//</span> <span class="pre">5</span> <span class="pre">≈</span> <span class="pre">3276</span></code> tokens including its own <code class="docutils literal notranslate"><span class="pre">&lt;bos&gt;</span></code> / <code class="docutils literal notranslate"><span class="pre">&lt;eos&gt;</span></code>.
+The rank-value tokenizer truncates per-cell tokens to this cap.</p>
+</section>
+<section id="why-the-same-multitask-config-covers-both-217m-and-1b">
+<h2>Why the same multitask config covers both 217M and 1B<a class="headerlink" href="#why-the-same-multitask-config-covers-both-217m-and-1b" title="Link to this heading"></a></h2>
+<p>Upstream <code class="docutils literal notranslate"><span class="pre">MaxTokiMultitaskFineTuneConfig</span></code> reads the model architecture
+(layers, hidden, heads, RoPE) from the distcp checkpoint via
+<code class="docutils literal notranslate"><span class="pre">load_settings_from_checkpoint</span></code>. So switching variants is just changing
+<code class="docutils literal notranslate"><span class="pre">--ckpt-dir</span></code>. <code class="docutils literal notranslate"><span class="pre">seq_length</span></code> and <code class="docutils literal notranslate"><span class="pre">scale_factor</span></code> are listed in the
+config’s <code class="docutils literal notranslate"><span class="pre">override_parent_fields</span></code>, which is why explicitly passing
+<code class="docutils literal notranslate"><span class="pre">--seq-length</span> <span class="pre">16384</span></code> actually takes effect (without that, the
+checkpoint’s training-time seq_length wins).</p>
+</section>
+<section id="three-context-strategies-three-different-questions">
+<h2>Three context strategies, three different questions<a class="headerlink" href="#three-context-strategies-three-different-questions" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">self</span></code> – “How much does perturbing g move this cell relative to itself?”
+Useful as a coarse sanity probe; doesn’t use the temporal-trajectory
+signal the model was trained on.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">prefix</span></code> / <code class="docutils literal notranslate"><span class="pre">all_in_group</span></code> – “Within this donor’s pseudotime
+trajectory, how does perturbing g shift apparent progression?”
+Within-donor signal, weak interpretation as years.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pool</span></code> – “Relative to a young-donor reference trajectory, how much does
+perturbing g move this old-donor cell along the aging axis?” The
+recommended setup for an aging-readout because the predicted Δt has clean
+donor-age semantics.</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="quickstart.html" class="btn btn-neutral float-left" title="Quickstart" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="spec_reference.html" class="btn btn-neutral float-right" title="Spec reference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Srijit Iyer.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,275 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>scripts.torch_pipeline.score &mdash; maxtoki-mlx torch_pipeline 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            maxtoki-mlx torch_pipeline
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../pipeline.html">Pipeline architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../spec_reference.html">Spec reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../delta_recipes.html">Running on Delta</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/spec.html">scripts.torch_pipeline.spec</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/tokenizer.html">scripts.torch_pipeline.tokenizer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/perturbation.html">scripts.torch_pipeline.perturbation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/dataset_prep.html">scripts.torch_pipeline.dataset_prep</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/predict_runner.html">scripts.torch_pipeline.predict_runner</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/score.html">scripts.torch_pipeline.score</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/run_inhibit_temporal_mse.html">scripts.torch_pipeline.run_inhibit_temporal_mse</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">maxtoki-mlx torch_pipeline</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">scripts.torch_pipeline.score</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for scripts.torch_pipeline.score</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Read PredictionWriter outputs and compute zero-shot temporal MSE.</span>
+
+<span class="sd">Upstream ``PredictionWriter`` writes one ``predictions__rank_{R}.pt`` per</span>
+<span class="sd">rank when ``write_interval=&quot;epoch&quot;``. Each file is a torch-pickled dict</span>
+<span class="sd">holding (at least):</span>
+
+<span class="sd">    regression_preds:      tensor[1, B]   - predicted timestep per row</span>
+<span class="sd">    timelapse_token_preds: tensor[1, B]   - argmax numeric token per row</span>
+
+<span class="sd">We assume baseline and perturbed datasets are emitted in identical row</span>
+<span class="sd">order (``dataset_prep.build_paired_dataset`` guarantees this) so we can</span>
+<span class="sd">join on row index. Per-cell:</span>
+
+<span class="sd">    delta_t(c) = pert_t[c] - base_t[c]</span>
+<span class="sd">    mse(c)     = delta_t(c)^2</span>
+
+<span class="sd">Dataset-level summary: mean(mse), mean(delta_t), n_cells_with_gene.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">asdict</span><span class="p">,</span> <span class="n">dataclass</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_load_rank_files</span><span class="p">(</span><span class="n">predictions_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]:</span>
+    <span class="n">files</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">predictions_dir</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="s2">&quot;predictions__rank_*.pt&quot;</span><span class="p">))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">files</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;no predictions__rank_*.pt under </span><span class="si">{</span><span class="n">predictions_dir</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">files</span><span class="p">:</span>
+        <span class="c1"># parse rank from filename: predictions__rank_&lt;R&gt;.pt or .._batch_&lt;B&gt;.pt</span>
+        <span class="n">stem</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">stem</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">rank</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">stem</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;rank_&quot;</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;__&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">IndexError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
+            <span class="k">continue</span>
+        <span class="n">out</span><span class="p">[</span><span class="n">rank</span><span class="p">]</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">map_location</span><span class="o">=</span><span class="s2">&quot;cpu&quot;</span><span class="p">,</span> <span class="n">weights_only</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">out</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_flatten_regression</span><span class="p">(</span><span class="n">pred_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return a 1D numpy array of regression predictions, in original row</span>
+<span class="sd">    order. Handles both per-batch list-of-dicts and the epoch-aggregated dict</span>
+<span class="sd">    that PredictionWriter produces.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="s2">&quot;regression_preds&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">pred_dict</span><span class="p">:</span>
+        <span class="c1"># epoch-mode wraps a list of per-batch dicts under &quot;predictions&quot;</span>
+        <span class="k">if</span> <span class="s2">&quot;predictions&quot;</span> <span class="ow">in</span> <span class="n">pred_dict</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pred_dict</span><span class="p">[</span><span class="s2">&quot;predictions&quot;</span><span class="p">],</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="n">arrs</span> <span class="o">=</span> <span class="p">[</span><span class="n">_flatten_regression</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">pred_dict</span><span class="p">[</span><span class="s2">&quot;predictions&quot;</span><span class="p">]]</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">arrs</span><span class="p">)</span> <span class="k">if</span> <span class="n">arrs</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([])</span>
+        <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;no &#39;regression_preds&#39; in dict (keys=</span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">pred_dict</span><span class="p">)</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+    <span class="n">pred</span> <span class="o">=</span> <span class="n">pred_dict</span><span class="p">[</span><span class="s2">&quot;regression_preds&quot;</span><span class="p">]</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">):</span>
+        <span class="n">pred</span> <span class="o">=</span> <span class="n">pred</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span><span class="o">.</span><span class="n">float</span><span class="p">()</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">pred</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="load_predictions">
+<a class="viewcode-back" href="../../../api/score.html#scripts.torch_pipeline.score.load_predictions">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_predictions</span><span class="p">(</span><span class="n">predictions_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Load all ranks and return concatenated regression preds in row order.&quot;&quot;&quot;</span>
+    <span class="n">rank_to_dict</span> <span class="o">=</span> <span class="n">_load_rank_files</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">predictions_dir</span><span class="p">))</span>
+    <span class="n">parts</span> <span class="o">=</span> <span class="p">[</span><span class="n">_flatten_regression</span><span class="p">(</span><span class="n">rank_to_dict</span><span class="p">[</span><span class="n">r</span><span class="p">])</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">rank_to_dict</span><span class="p">)]</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="k">if</span> <span class="n">parts</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([])</span></div>
+
+
+
+<div class="viewcode-block" id="ScoreSummary">
+<a class="viewcode-back" href="../../../api/score.html#scripts.torch_pipeline.score.ScoreSummary">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ScoreSummary</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Dataset-level summary of one zero-shot perturbation run.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        n_cells: Total number of scored rows (queries).</span>
+<span class="sd">        n_cells_with_gene: Subset where the perturbed gene was actually</span>
+<span class="sd">            present in the query cell&#39;s expression profile.</span>
+<span class="sd">        mean_mse: ``mean((perturbed_t - baseline_t) ** 2)`` across all rows.</span>
+<span class="sd">        mean_mse_present: Same, restricted to ``gene_present`` rows.</span>
+<span class="sd">        mean_delta_t: Signed mean of ``perturbed_t - baseline_t``.</span>
+<span class="sd">            Negative -&gt; model thinks the perturbation rejuvenates;</span>
+<span class="sd">            positive -&gt; ages.</span>
+<span class="sd">        mean_delta_t_present: Signed mean restricted to ``gene_present``.</span>
+<span class="sd">        abs_mean_delta_t: Mean of absolute ``delta_t``.</span>
+<span class="sd">        direction: ``inhibit`` / ``delete`` / ``overexpress``.</span>
+<span class="sd">        gene_ensembl: Resolved Ensembl ID of the perturbed gene.</span>
+<span class="sd">        gene_token: Token ID in the model&#39;s vocabulary.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">n_cells</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">n_cells_with_gene</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">mean_mse</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">mean_mse_present</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">mean_delta_t</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">mean_delta_t_present</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">abs_mean_delta_t</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">direction</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">gene_ensembl</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">gene_token</span><span class="p">:</span> <span class="nb">int</span></div>
+
+
+
+<div class="viewcode-block" id="score">
+<a class="viewcode-back" href="../../../api/score.html#scripts.torch_pipeline.score.score">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">score</span><span class="p">(</span>
+    <span class="n">baseline_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="n">perturbed_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="n">paired_metadata</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">out_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">ScoreSummary</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Read both prediction dirs, compute per-cell MSE, return arrays + summary.&quot;&quot;&quot;</span>
+    <span class="n">base</span> <span class="o">=</span> <span class="n">load_predictions</span><span class="p">(</span><span class="n">baseline_dir</span><span class="p">)</span>
+    <span class="n">pert</span> <span class="o">=</span> <span class="n">load_predictions</span><span class="p">(</span><span class="n">perturbed_dir</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">base</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="n">pert</span><span class="o">.</span><span class="n">shape</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;baseline / perturbed prediction count mismatch: &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">base</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2"> vs </span><span class="si">{</span><span class="n">pert</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+    <span class="n">delta</span> <span class="o">=</span> <span class="n">pert</span> <span class="o">-</span> <span class="n">base</span>
+    <span class="n">per_cell_mse</span> <span class="o">=</span> <span class="n">delta</span> <span class="o">**</span> <span class="mi">2</span>
+
+    <span class="n">meta</span> <span class="o">=</span> <span class="n">paired_metadata</span> <span class="ow">or</span> <span class="p">{}</span>
+    <span class="n">gene_present_mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;gene_present&quot;</span><span class="p">,</span> <span class="p">[</span><span class="kc">True</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">delta</span><span class="p">)),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+    <span class="n">n_present</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">gene_present_mask</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+
+    <span class="n">summary</span> <span class="o">=</span> <span class="n">ScoreSummary</span><span class="p">(</span>
+        <span class="n">n_cells</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">delta</span><span class="p">)),</span>
+        <span class="n">n_cells_with_gene</span><span class="o">=</span><span class="n">n_present</span><span class="p">,</span>
+        <span class="n">mean_mse</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">per_cell_mse</span><span class="o">.</span><span class="n">mean</span><span class="p">()),</span>
+        <span class="n">mean_mse_present</span><span class="o">=</span><span class="p">(</span>
+            <span class="nb">float</span><span class="p">(</span><span class="n">per_cell_mse</span><span class="p">[</span><span class="n">gene_present_mask</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">())</span> <span class="k">if</span> <span class="n">n_present</span> <span class="k">else</span> <span class="nb">float</span><span class="p">(</span><span class="s2">&quot;nan&quot;</span><span class="p">)</span>
+        <span class="p">),</span>
+        <span class="n">mean_delta_t</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">delta</span><span class="o">.</span><span class="n">mean</span><span class="p">()),</span>
+        <span class="n">mean_delta_t_present</span><span class="o">=</span><span class="p">(</span>
+            <span class="nb">float</span><span class="p">(</span><span class="n">delta</span><span class="p">[</span><span class="n">gene_present_mask</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">())</span> <span class="k">if</span> <span class="n">n_present</span> <span class="k">else</span> <span class="nb">float</span><span class="p">(</span><span class="s2">&quot;nan&quot;</span><span class="p">)</span>
+        <span class="p">),</span>
+        <span class="n">abs_mean_delta_t</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">delta</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()),</span>
+        <span class="n">direction</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;direction&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)),</span>
+        <span class="n">gene_ensembl</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;gene_ensembl&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)),</span>
+        <span class="n">gene_token</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;gene_token&quot;</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)),</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">out_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">out_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">out_path</span><span class="p">)</span>
+        <span class="n">out_path</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">savez</span><span class="p">(</span>
+            <span class="n">out_path</span><span class="p">,</span>
+            <span class="n">baseline</span><span class="o">=</span><span class="n">base</span><span class="p">,</span>
+            <span class="n">perturbed</span><span class="o">=</span><span class="n">pert</span><span class="p">,</span>
+            <span class="n">delta_t</span><span class="o">=</span><span class="n">delta</span><span class="p">,</span>
+            <span class="n">per_cell_mse</span><span class="o">=</span><span class="n">per_cell_mse</span><span class="p">,</span>
+            <span class="n">gene_present</span><span class="o">=</span><span class="n">gene_present_mask</span><span class="p">,</span>
+            <span class="n">summary</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">asdict</span><span class="p">(</span><span class="n">summary</span><span class="p">))),</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">base</span><span class="p">,</span> <span class="n">pert</span><span class="p">,</span> <span class="n">delta</span><span class="p">,</span> <span class="n">summary</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Srijit Iyer.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

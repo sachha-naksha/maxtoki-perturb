@@ -1,0 +1,28 @@
+# Fixed-reference trajectory: every query cell sees the SAME hand-picked
+# context cells (e.g. a "young donor" reference set). Useful for comparing
+# many query cells against a canonical baseline trajectory.
+data:
+  h5ad: ./data/4111_cells.h5ad
+  pseudotime_col: pseudotime
+  group_col: null
+  cell_id_col: null
+  count_col: n_counts
+
+context:
+  strategy: explicit
+  explicit_indices: [12, 47, 103, 256]   # adata.obs row indices, ordered earliest -> latest
+  max_cells: 4
+  ordering: pseudotime
+  include_self: false
+
+query:
+  strategy: each_cell
+  filter_obs: {}
+
+perturbation:
+  gene_symbol: ZLX1
+  gene: null
+  direction: inhibit
+  apply_to: query
+
+seq_length: 16384

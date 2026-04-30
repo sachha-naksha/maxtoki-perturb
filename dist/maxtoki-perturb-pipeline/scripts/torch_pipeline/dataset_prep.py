@@ -35,18 +35,15 @@ We solve for the per-cell RVE cap so the worst-case row fits in
 """
 from __future__ import annotations
 
-import sys as _sys, os as _os
-_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
-
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, Optional
 
 import numpy as np
 
-from perturbation import perturb_tokens
-from spec import ContextSpec, ExperimentSpec
-from tokenizer import CellTokenizer, MODEL_INPUT_SIZE, pick_dummy_numeric_token
+from .perturbation import perturb_tokens
+from .spec import ContextSpec, ExperimentSpec
+from .tokenizer import CellTokenizer, MODEL_INPUT_SIZE, pick_dummy_numeric_token
 
 
 # ---------------------------------------------------------------------------
@@ -155,10 +152,7 @@ def _resolve_pool(
     adata,
     cspec: ContextSpec,
 ) -> list[_CellPick]:
-    """Resolve the pool ONCE (it's identical across queries when strategy=='pool').
-    Don't let NaNs in the pseudotime cells be allowed in the pool"""
-    import math
-
+    """Resolve the pool ONCE (it's identical across queries when strategy=='pool')."""
     keep = np.ones(len(all_cells), dtype=bool)
     for col, allowed in cspec.pool_filter.items():
         if col not in adata.obs.columns:
@@ -174,24 +168,6 @@ def _resolve_pool(
 
     sel = cspec.pool_select
     assert sel is not None
-
-    # Drop cells with NaN pseudotime if we need to sort/pick by pseudotime.
-    # NaNs in pandas/numpy floats break ordering invariants and can leak
-    # into evenly_spaced / first / last picks.
-    if sel.sort_by == "pseudotime" or cspec.ordering == "pseudotime":
-        n_before = len(pool)
-        pool = [p for p in pool if isinstance(p.pseudotime, (int, float)) and not math.isnan(p.pseudotime)]
-        n_dropped = n_before - len(pool)
-        if n_dropped:
-            print(f"[info] dropped {n_dropped}/{n_before} pool cells with NaN pseudotime "
-                  f"(check data.pseudotime_col={adata.obs.columns.tolist()})")
-        if not pool:
-            raise RuntimeError(
-                "pool is empty after dropping NaN-pseudotime cells. "
-                "Either fix the pseudotime column, or set pool_select.sort_by=obs_index "
-                "and context.ordering=obs_index to bypass the pseudotime requirement."
-            )
-
     if sel.sort_by == "pseudotime":
         pool = sorted(pool, key=lambda p: p.pseudotime)
     elif sel.sort_by == "obs_index":

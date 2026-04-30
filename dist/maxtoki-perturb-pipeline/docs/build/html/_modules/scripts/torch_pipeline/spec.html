@@ -1,0 +1,408 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>scripts.torch_pipeline.spec &mdash; maxtoki-mlx torch_pipeline 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            maxtoki-mlx torch_pipeline
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../pipeline.html">Pipeline architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../spec_reference.html">Spec reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../delta_recipes.html">Running on Delta</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/spec.html">scripts.torch_pipeline.spec</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/tokenizer.html">scripts.torch_pipeline.tokenizer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/perturbation.html">scripts.torch_pipeline.perturbation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/dataset_prep.html">scripts.torch_pipeline.dataset_prep</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/predict_runner.html">scripts.torch_pipeline.predict_runner</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/score.html">scripts.torch_pipeline.score</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/run_inhibit_temporal_mse.html">scripts.torch_pipeline.run_inhibit_temporal_mse</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">maxtoki-mlx torch_pipeline</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">scripts.torch_pipeline.spec</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for scripts.torch_pipeline.spec</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Spec for what to feed the model in a zero-shot perturbation experiment.</span>
+
+<span class="sd">The spec answers four questions per row of the prepared dataset:</span>
+
+<span class="sd">    1. Which cell is the QUERY (the cell whose temporal prediction will shift</span>
+<span class="sd">       under perturbation)?</span>
+<span class="sd">    2. Which cells form the CONTEXT (the trajectory of past cells the model</span>
+<span class="sd">       conditions on, in pseudotime order)?</span>
+<span class="sd">    3. WHICH GENE is being KO&#39;d / inhibited / overexpressed?</span>
+<span class="sd">    4. Where is the perturbation applied -- query only, or also in context?</span>
+
+<span class="sd">A spec is normally written as YAML / JSON and loaded with ``load_spec``.</span>
+<span class="sd">Programmatic construction works too -- it&#39;s just a dataclass.</span>
+
+<span class="sd">YAML example::</span>
+
+<span class="sd">    data:</span>
+<span class="sd">      h5ad: ./data/4111_cells.h5ad</span>
+<span class="sd">      pseudotime_col: pseudotime         # obs column used for ordering</span>
+<span class="sd">      group_col: donor_id                # cells of the same group share a trajectory</span>
+<span class="sd">      cell_id_col: null                  # defaults to obs_names</span>
+<span class="sd">      count_col: n_counts                # null -&gt; compute from X.sum()</span>
+
+<span class="sd">    context:</span>
+<span class="sd">      strategy: prefix                   # self | prefix | all_in_group | explicit</span>
+<span class="sd">      max_cells: 4                       # cap context length (in cells, not tokens)</span>
+<span class="sd">      ordering: pseudotime               # pseudotime | obs_index</span>
+<span class="sd">      include_self: false                # when prefix/all_in_group, include the query?</span>
+<span class="sd">      explicit_indices: null             # list[int] when strategy == explicit</span>
+
+<span class="sd">    query:</span>
+<span class="sd">      strategy: each_cell                # each_cell | latest_per_group</span>
+<span class="sd">      filter_obs:                        # optional - keep only cells matching these</span>
+<span class="sd">        cell_type: [&quot;fibroblast&quot;]</span>
+
+<span class="sd">    perturbation:</span>
+<span class="sd">      gene_symbol: ZLX1                  # one of gene / gene_symbol must be set</span>
+<span class="sd">      gene: null                         # Ensembl ID; takes precedence if set</span>
+<span class="sd">      direction: inhibit                 # inhibit | delete | overexpress</span>
+<span class="sd">      apply_to: query                    # query | query_and_context</span>
+
+<span class="sd">Set ``context.strategy: self`` for the simple cell-vs-itself baseline</span>
+<span class="sd">(equivalent to the previous default). Set ``query.strategy: latest_per_group``</span>
+<span class="sd">to score one prediction per donor / sample instead of per cell.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">asdict</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">Optional</span>
+
+
+<span class="n">ContextStrategy</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;self&quot;</span><span class="p">,</span> <span class="s2">&quot;prefix&quot;</span><span class="p">,</span> <span class="s2">&quot;all_in_group&quot;</span><span class="p">,</span> <span class="s2">&quot;explicit&quot;</span><span class="p">,</span> <span class="s2">&quot;pool&quot;</span><span class="p">]</span>
+<span class="n">QueryStrategy</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;each_cell&quot;</span><span class="p">,</span> <span class="s2">&quot;latest_per_group&quot;</span><span class="p">]</span>
+<span class="n">Direction</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;inhibit&quot;</span><span class="p">,</span> <span class="s2">&quot;delete&quot;</span><span class="p">,</span> <span class="s2">&quot;overexpress&quot;</span><span class="p">]</span>
+<span class="n">ApplyTo</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;query&quot;</span><span class="p">,</span> <span class="s2">&quot;query_and_context&quot;</span><span class="p">]</span>
+<span class="n">Ordering</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;pseudotime&quot;</span><span class="p">,</span> <span class="s2">&quot;obs_index&quot;</span><span class="p">]</span>
+<span class="n">PoolPick</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;first&quot;</span><span class="p">,</span> <span class="s2">&quot;last&quot;</span><span class="p">,</span> <span class="s2">&quot;evenly_spaced&quot;</span><span class="p">,</span> <span class="s2">&quot;random&quot;</span><span class="p">]</span>
+
+
+<div class="viewcode-block" id="DataSpec">
+<a class="viewcode-back" href="../../../api/spec.html#scripts.torch_pipeline.spec.DataSpec">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">DataSpec</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Where the cells live and which obs columns drive selection.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        h5ad: Path to a single ``.h5ad`` file. Counts must live in ``adata.X``</span>
+<span class="sd">            or ``adata.raw.X``; gene IDs in ``var[&quot;ensembl_id&quot;]``,</span>
+<span class="sd">            ``var[&quot;feature_id&quot;]``, or ENSG-prefixed ``var_names``.</span>
+<span class="sd">        pseudotime_col: Name of an ``obs`` column with monotone pseudotime /</span>
+<span class="sd">            age / observation-time values. Required by context strategies</span>
+<span class="sd">            ``prefix`` and ``all_in_group``, and by ``pool_select.sort_by=&quot;pseudotime&quot;``.</span>
+<span class="sd">        group_col: Name of an ``obs`` column that groups cells into trajectories</span>
+<span class="sd">            (e.g. ``donor_id``). Required by ``prefix`` and ``all_in_group``.</span>
+<span class="sd">        cell_id_col: Name of an ``obs`` column to use as the per-cell ID in</span>
+<span class="sd">            output records. ``None`` falls back to ``adata.obs_names``.</span>
+<span class="sd">        count_col: Name of an ``obs`` column holding pre-computed total UMI</span>
+<span class="sd">            counts per cell. ``None`` re-computes from the count matrix.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">h5ad</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">pseudotime_col</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">group_col</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">cell_id_col</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">count_col</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;n_counts&quot;</span></div>
+
+
+
+<div class="viewcode-block" id="PoolSelect">
+<a class="viewcode-back" href="../../../api/spec.html#scripts.torch_pipeline.spec.PoolSelect">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">PoolSelect</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;How to choose context cells from a filtered pool (one pool, reused for every query).&quot;&quot;&quot;</span>
+    <span class="n">n</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">3</span>                          <span class="c1"># number of context cells to pick</span>
+    <span class="n">pick</span><span class="p">:</span> <span class="n">PoolPick</span> <span class="o">=</span> <span class="s2">&quot;evenly_spaced&quot;</span>    <span class="c1"># first | last | evenly_spaced | random</span>
+    <span class="n">sort_by</span><span class="p">:</span> <span class="n">Ordering</span> <span class="o">=</span> <span class="s2">&quot;pseudotime&quot;</span>    <span class="c1"># how to sort the pool before picking</span>
+    <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span></div>
+
+
+
+<div class="viewcode-block" id="ContextSpec">
+<a class="viewcode-back" href="../../../api/spec.html#scripts.torch_pipeline.spec.ContextSpec">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ContextSpec</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;How the trajectory of past cells (the context) is assembled per query.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        strategy: One of ``self`` (cell vs. itself), ``prefix`` (same-group</span>
+<span class="sd">            cells with smaller pseudotime), ``all_in_group`` (all other cells</span>
+<span class="sd">            in same group), ``explicit`` (fixed adata indices for every query),</span>
+<span class="sd">            or ``pool`` (filter then pick from a cross-group pool).</span>
+<span class="sd">        max_cells: Final cap on number of context cells per row.</span>
+<span class="sd">        ordering: How context cells are ordered in the input sequence.</span>
+<span class="sd">        include_self: When ``True`` and strategy is ``prefix`` /</span>
+<span class="sd">            ``all_in_group``, append the query itself to the context.</span>
+<span class="sd">        explicit_indices: ``adata.obs`` row indices used as context for every</span>
+<span class="sd">            query. Required when ``strategy == &quot;explicit&quot;``.</span>
+<span class="sd">        pool_filter: ``{obs_col: [allowed_values]}`` filter applied to the</span>
+<span class="sd">            full cell list. Required when ``strategy == &quot;pool&quot;``.</span>
+<span class="sd">        pool_select: How to pick a fixed-size context from the filtered pool.</span>
+<span class="sd">            Required when ``strategy == &quot;pool&quot;``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">strategy</span><span class="p">:</span> <span class="n">ContextStrategy</span> <span class="o">=</span> <span class="s2">&quot;self&quot;</span>
+    <span class="n">max_cells</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">4</span>
+    <span class="n">ordering</span><span class="p">:</span> <span class="n">Ordering</span> <span class="o">=</span> <span class="s2">&quot;pseudotime&quot;</span>
+    <span class="n">include_self</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">explicit_indices</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">pool_filter</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+    <span class="n">pool_select</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PoolSelect</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+
+<div class="viewcode-block" id="QuerySpec">
+<a class="viewcode-back" href="../../../api/spec.html#scripts.torch_pipeline.spec.QuerySpec">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">QuerySpec</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Which cells become queries (one row each in the output dataset).</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        strategy: ``each_cell`` -&gt; one row per cell; ``latest_per_group`` -&gt;</span>
+<span class="sd">            one row per group, the cell with the largest pseudotime.</span>
+<span class="sd">        filter_obs: ``{obs_col: [allowed_values]}`` to score only matching</span>
+<span class="sd">            cells (e.g. ``{&quot;cell_type&quot;: [&quot;fibroblast&quot;]}``).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">strategy</span><span class="p">:</span> <span class="n">QueryStrategy</span> <span class="o">=</span> <span class="s2">&quot;each_cell&quot;</span>
+    <span class="n">filter_obs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="PerturbationSpec">
+<a class="viewcode-back" href="../../../api/spec.html#scripts.torch_pipeline.spec.PerturbationSpec">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">PerturbationSpec</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Which gene to perturb, how, and where it&#39;s applied in the row.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        gene: Ensembl ID (e.g. ``&quot;ENSG00000109906&quot;``). Takes precedence over</span>
+<span class="sd">            ``gene_symbol`` if both are set.</span>
+<span class="sd">        gene_symbol: HGNC symbol (e.g. ``&quot;ZLX1&quot;``). Resolved against the</span>
+<span class="sd">            packaged ``gene_name_id.json``.</span>
+<span class="sd">        direction: ``inhibit`` moves the gene&#39;s token to the lowest rank;</span>
+<span class="sd">            ``delete`` removes it; ``overexpress`` moves it to the front.</span>
+<span class="sd">        apply_to: ``query`` perturbs only the query cell; ``query_and_context``</span>
+<span class="sd">            also perturbs every cell in the context.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">gene</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">gene_symbol</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">direction</span><span class="p">:</span> <span class="n">Direction</span> <span class="o">=</span> <span class="s2">&quot;inhibit&quot;</span>
+    <span class="n">apply_to</span><span class="p">:</span> <span class="n">ApplyTo</span> <span class="o">=</span> <span class="s2">&quot;query&quot;</span></div>
+
+
+
+<div class="viewcode-block" id="ExperimentSpec">
+<a class="viewcode-back" href="../../../api/spec.html#scripts.torch_pipeline.spec.ExperimentSpec">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ExperimentSpec</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Top-level spec for one zero-shot perturbation experiment.</span>
+
+<span class="sd">    A spec is normally written as YAML (see ``configs/`` for examples) and</span>
+<span class="sd">    loaded via :func:`load_spec`. It can also be constructed programmatically.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        data: Input h5ad + obs-column mapping.</span>
+<span class="sd">        context: How the trajectory of past cells is assembled per query.</span>
+<span class="sd">        query: Which cells are scored.</span>
+<span class="sd">        perturbation: Gene KO / inhibition / overexpression target.</span>
+<span class="sd">        seq_length: Model context length. Default ``16384`` for trajectory</span>
+<span class="sd">            tasks; the per-cell rank-value cap is computed from this so the</span>
+<span class="sd">            worst-case row fits.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">data</span><span class="p">:</span> <span class="n">DataSpec</span>
+    <span class="n">context</span><span class="p">:</span> <span class="n">ContextSpec</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">ContextSpec</span><span class="p">)</span>
+    <span class="n">query</span><span class="p">:</span> <span class="n">QuerySpec</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">QuerySpec</span><span class="p">)</span>
+    <span class="n">perturbation</span><span class="p">:</span> <span class="n">PerturbationSpec</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">PerturbationSpec</span><span class="p">)</span>
+    <span class="n">seq_length</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">16384</span>
+
+<div class="viewcode-block" id="ExperimentSpec.validate">
+<a class="viewcode-back" href="../../../api/spec.html#scripts.torch_pipeline.spec.ExperimentSpec.validate">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">validate</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Raise ``ValueError`` if the spec is internally inconsistent.&quot;&quot;&quot;</span>
+        <span class="n">c</span><span class="p">,</span> <span class="n">p</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">context</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">perturbation</span>
+        <span class="k">if</span> <span class="n">c</span><span class="o">.</span><span class="n">strategy</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;prefix&quot;</span><span class="p">,</span> <span class="s2">&quot;all_in_group&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">pseudotime_col</span> <span class="ow">and</span> <span class="n">c</span><span class="o">.</span><span class="n">ordering</span> <span class="o">==</span> <span class="s2">&quot;pseudotime&quot;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;context.strategy=</span><span class="si">{</span><span class="n">c</span><span class="o">.</span><span class="n">strategy</span><span class="si">}</span><span class="s2"> with ordering=pseudotime requires &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;data.pseudotime_col to be set.&quot;</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">c</span><span class="o">.</span><span class="n">strategy</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;prefix&quot;</span><span class="p">,</span> <span class="s2">&quot;all_in_group&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">group_col</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;context.strategy=</span><span class="si">{</span><span class="n">c</span><span class="o">.</span><span class="n">strategy</span><span class="si">}</span><span class="s2"> requires data.group_col so cells &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;can be grouped into trajectories.&quot;</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">c</span><span class="o">.</span><span class="n">strategy</span> <span class="o">==</span> <span class="s2">&quot;explicit&quot;</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">c</span><span class="o">.</span><span class="n">explicit_indices</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;context.strategy=explicit requires context.explicit_indices.&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">c</span><span class="o">.</span><span class="n">strategy</span> <span class="o">==</span> <span class="s2">&quot;pool&quot;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">c</span><span class="o">.</span><span class="n">pool_filter</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;context.strategy=pool requires context.pool_filter (e.g. {&#39;donor_age&#39;: [34]}).&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">c</span><span class="o">.</span><span class="n">pool_select</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;context.strategy=pool requires context.pool_select.&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">c</span><span class="o">.</span><span class="n">pool_select</span><span class="o">.</span><span class="n">sort_by</span> <span class="o">==</span> <span class="s2">&quot;pseudotime&quot;</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">pseudotime_col</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;context.pool_select.sort_by=pseudotime requires data.pseudotime_col.&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">c</span><span class="o">.</span><span class="n">max_cells</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;context.max_cells must be &gt;= 1&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">gene</span> <span class="ow">or</span> <span class="n">p</span><span class="o">.</span><span class="n">gene_symbol</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;perturbation must set one of gene or gene_symbol.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ExperimentSpec.to_dict">
+<a class="viewcode-back" href="../../../api/spec.html#scripts.torch_pipeline.spec.ExperimentSpec.to_dict">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="n">asdict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">),</span>
+            <span class="s2">&quot;context&quot;</span><span class="p">:</span> <span class="n">asdict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">context</span><span class="p">),</span>
+            <span class="s2">&quot;query&quot;</span><span class="p">:</span> <span class="n">asdict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">query</span><span class="p">),</span>
+            <span class="s2">&quot;perturbation&quot;</span><span class="p">:</span> <span class="n">asdict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">perturbation</span><span class="p">),</span>
+            <span class="s2">&quot;seq_length&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">seq_length</span><span class="p">,</span>
+        <span class="p">}</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="load_spec">
+<a class="viewcode-back" href="../../../api/spec.html#scripts.torch_pipeline.spec.load_spec">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_spec</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ExperimentSpec</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Load an :class:`ExperimentSpec` from a YAML or JSON file.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        path: Filesystem path. Suffix decides the parser (``.yaml`` / ``.yml``</span>
+<span class="sd">            -&gt; PyYAML, anything else -&gt; ``json``).</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        A validated :class:`ExperimentSpec`.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: If the spec fails validation.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="n">text</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">read_text</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">suffix</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;.yaml&quot;</span><span class="p">,</span> <span class="s2">&quot;.yml&quot;</span><span class="p">):</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">yaml</span>  <span class="c1"># type: ignore</span>
+        <span class="n">raw</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">raw</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">spec_from_dict</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="spec_from_dict">
+<a class="viewcode-back" href="../../../api/spec.html#scripts.torch_pipeline.spec.spec_from_dict">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">spec_from_dict</span><span class="p">(</span><span class="n">raw</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ExperimentSpec</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build an :class:`ExperimentSpec` from a nested dict (typically parsed YAML).&quot;&quot;&quot;</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">DataSpec</span><span class="p">(</span><span class="o">**</span><span class="n">raw</span><span class="p">[</span><span class="s2">&quot;data&quot;</span><span class="p">])</span>
+    <span class="n">context_raw</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;context&quot;</span><span class="p">,</span> <span class="p">{}))</span>
+    <span class="n">pool_select_raw</span> <span class="o">=</span> <span class="n">context_raw</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;pool_select&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">pool_select_raw</span><span class="p">:</span>
+        <span class="n">context_raw</span><span class="p">[</span><span class="s2">&quot;pool_select&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">PoolSelect</span><span class="p">(</span><span class="o">**</span><span class="n">pool_select_raw</span><span class="p">)</span>
+    <span class="n">context</span> <span class="o">=</span> <span class="n">ContextSpec</span><span class="p">(</span><span class="o">**</span><span class="n">context_raw</span><span class="p">)</span>
+    <span class="n">query_raw</span> <span class="o">=</span> <span class="n">raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;query&quot;</span><span class="p">,</span> <span class="p">{})</span>
+    <span class="n">query</span> <span class="o">=</span> <span class="n">QuerySpec</span><span class="p">(</span>
+        <span class="n">strategy</span><span class="o">=</span><span class="n">query_raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;strategy&quot;</span><span class="p">,</span> <span class="s2">&quot;each_cell&quot;</span><span class="p">),</span>
+        <span class="n">filter_obs</span><span class="o">=</span><span class="n">query_raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;filter_obs&quot;</span><span class="p">,</span> <span class="p">{})</span> <span class="ow">or</span> <span class="p">{},</span>
+    <span class="p">)</span>
+    <span class="n">perturbation</span> <span class="o">=</span> <span class="n">PerturbationSpec</span><span class="p">(</span><span class="o">**</span><span class="n">raw</span><span class="p">[</span><span class="s2">&quot;perturbation&quot;</span><span class="p">])</span>
+    <span class="n">spec</span> <span class="o">=</span> <span class="n">ExperimentSpec</span><span class="p">(</span>
+        <span class="n">data</span><span class="o">=</span><span class="n">data</span><span class="p">,</span>
+        <span class="n">context</span><span class="o">=</span><span class="n">context</span><span class="p">,</span>
+        <span class="n">query</span><span class="o">=</span><span class="n">query</span><span class="p">,</span>
+        <span class="n">perturbation</span><span class="o">=</span><span class="n">perturbation</span><span class="p">,</span>
+        <span class="n">seq_length</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;seq_length&quot;</span><span class="p">,</span> <span class="mi">16384</span><span class="p">)),</span>
+    <span class="p">)</span>
+    <span class="n">spec</span><span class="o">.</span><span class="n">validate</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">spec</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Srijit Iyer.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

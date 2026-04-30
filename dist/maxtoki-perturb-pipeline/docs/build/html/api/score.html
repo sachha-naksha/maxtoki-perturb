@@ -1,0 +1,348 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>scripts.torch_pipeline.score &mdash; maxtoki-mlx torch_pipeline 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="scripts.torch_pipeline.run_inhibit_temporal_mse" href="run_inhibit_temporal_mse.html" />
+    <link rel="prev" title="scripts.torch_pipeline.predict_runner" href="predict_runner.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            maxtoki-mlx torch_pipeline
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../pipeline.html">Pipeline architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../spec_reference.html">Spec reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../delta_recipes.html">Running on Delta</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="spec.html">scripts.torch_pipeline.spec</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tokenizer.html">scripts.torch_pipeline.tokenizer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="perturbation.html">scripts.torch_pipeline.perturbation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="dataset_prep.html">scripts.torch_pipeline.dataset_prep</a></li>
+<li class="toctree-l1"><a class="reference internal" href="predict_runner.html">scripts.torch_pipeline.predict_runner</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">scripts.torch_pipeline.score</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#scripts.torch_pipeline.score.load_predictions"><code class="docutils literal notranslate"><span class="pre">load_predictions()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#scripts.torch_pipeline.score.ScoreSummary"><code class="docutils literal notranslate"><span class="pre">ScoreSummary</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.score.ScoreSummary.n_cells"><code class="docutils literal notranslate"><span class="pre">ScoreSummary.n_cells</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.score.ScoreSummary.n_cells_with_gene"><code class="docutils literal notranslate"><span class="pre">ScoreSummary.n_cells_with_gene</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.score.ScoreSummary.mean_mse"><code class="docutils literal notranslate"><span class="pre">ScoreSummary.mean_mse</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.score.ScoreSummary.mean_mse_present"><code class="docutils literal notranslate"><span class="pre">ScoreSummary.mean_mse_present</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.score.ScoreSummary.mean_delta_t"><code class="docutils literal notranslate"><span class="pre">ScoreSummary.mean_delta_t</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.score.ScoreSummary.mean_delta_t_present"><code class="docutils literal notranslate"><span class="pre">ScoreSummary.mean_delta_t_present</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.score.ScoreSummary.abs_mean_delta_t"><code class="docutils literal notranslate"><span class="pre">ScoreSummary.abs_mean_delta_t</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.score.ScoreSummary.direction"><code class="docutils literal notranslate"><span class="pre">ScoreSummary.direction</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.score.ScoreSummary.gene_ensembl"><code class="docutils literal notranslate"><span class="pre">ScoreSummary.gene_ensembl</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.score.ScoreSummary.gene_token"><code class="docutils literal notranslate"><span class="pre">ScoreSummary.gene_token</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id0"><code class="docutils literal notranslate"><span class="pre">ScoreSummary.n_cells</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id1"><code class="docutils literal notranslate"><span class="pre">ScoreSummary.n_cells_with_gene</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id2"><code class="docutils literal notranslate"><span class="pre">ScoreSummary.mean_mse</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id3"><code class="docutils literal notranslate"><span class="pre">ScoreSummary.mean_mse_present</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id4"><code class="docutils literal notranslate"><span class="pre">ScoreSummary.mean_delta_t</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id5"><code class="docutils literal notranslate"><span class="pre">ScoreSummary.mean_delta_t_present</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id6"><code class="docutils literal notranslate"><span class="pre">ScoreSummary.abs_mean_delta_t</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id7"><code class="docutils literal notranslate"><span class="pre">ScoreSummary.direction</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id8"><code class="docutils literal notranslate"><span class="pre">ScoreSummary.gene_ensembl</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id9"><code class="docutils literal notranslate"><span class="pre">ScoreSummary.gene_token</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#scripts.torch_pipeline.score.score"><code class="docutils literal notranslate"><span class="pre">score()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="run_inhibit_temporal_mse.html">scripts.torch_pipeline.run_inhibit_temporal_mse</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">maxtoki-mlx torch_pipeline</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">scripts.torch_pipeline.score</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/api/score.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-scripts.torch_pipeline.score">
+<span id="scripts-torch-pipeline-score"></span><h1>scripts.torch_pipeline.score<a class="headerlink" href="#module-scripts.torch_pipeline.score" title="Link to this heading"></a></h1>
+<p>Read PredictionWriter outputs and compute zero-shot temporal MSE.</p>
+<p>Upstream <code class="docutils literal notranslate"><span class="pre">PredictionWriter</span></code> writes one <code class="docutils literal notranslate"><span class="pre">predictions__rank_{R}.pt</span></code> per
+rank when <code class="docutils literal notranslate"><span class="pre">write_interval=&quot;epoch&quot;</span></code>. Each file is a torch-pickled dict
+holding (at least):</p>
+<blockquote>
+<div><p>regression_preds:      tensor[1, B]   - predicted timestep per row
+timelapse_token_preds: tensor[1, B]   - argmax numeric token per row</p>
+</div></blockquote>
+<p>We assume baseline and perturbed datasets are emitted in identical row
+order (<code class="docutils literal notranslate"><span class="pre">dataset_prep.build_paired_dataset</span></code> guarantees this) so we can
+join on row index. Per-cell:</p>
+<blockquote>
+<div><p>delta_t(c) = pert_t[c] - base_t[c]
+mse(c)     = delta_t(c)^2</p>
+</div></blockquote>
+<p>Dataset-level summary: mean(mse), mean(delta_t), n_cells_with_gene.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.score.load_predictions">
+<span class="sig-prename descclassname"><span class="pre">scripts.torch_pipeline.score.</span></span><span class="sig-name descname"><span class="pre">load_predictions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">predictions_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">numpy.ndarray</span></a></span></span><a class="reference internal" href="../_modules/scripts/torch_pipeline/score.html#load_predictions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#scripts.torch_pipeline.score.load_predictions" title="Link to this definition"></a></dt>
+<dd><p>Load all ranks and return concatenated regression preds in row order.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.score.ScoreSummary">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">scripts.torch_pipeline.score.</span></span><span class="sig-name descname"><span class="pre">ScoreSummary</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_cells</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_cells_with_gene</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">mean_mse</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">mean_mse_present</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">mean_delta_t</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">mean_delta_t_present</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">abs_mean_delta_t</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">direction</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">gene_ensembl</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">gene_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/scripts/torch_pipeline/score.html#ScoreSummary"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#scripts.torch_pipeline.score.ScoreSummary" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Dataset-level summary of one zero-shot perturbation run.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.score.ScoreSummary.n_cells">
+<span class="sig-name descname"><span class="pre">n_cells</span></span><a class="headerlink" href="#scripts.torch_pipeline.score.ScoreSummary.n_cells" title="Link to this definition"></a></dt>
+<dd><p>Total number of scored rows (queries).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)">int</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.score.ScoreSummary.n_cells_with_gene">
+<span class="sig-name descname"><span class="pre">n_cells_with_gene</span></span><a class="headerlink" href="#scripts.torch_pipeline.score.ScoreSummary.n_cells_with_gene" title="Link to this definition"></a></dt>
+<dd><p>Subset where the perturbed gene was actually
+present in the query cell’s expression profile.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)">int</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.score.ScoreSummary.mean_mse">
+<span class="sig-name descname"><span class="pre">mean_mse</span></span><a class="headerlink" href="#scripts.torch_pipeline.score.ScoreSummary.mean_mse" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">mean((perturbed_t</span> <span class="pre">-</span> <span class="pre">baseline_t)</span> <span class="pre">**</span> <span class="pre">2)</span></code> across all rows.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.score.ScoreSummary.mean_mse_present">
+<span class="sig-name descname"><span class="pre">mean_mse_present</span></span><a class="headerlink" href="#scripts.torch_pipeline.score.ScoreSummary.mean_mse_present" title="Link to this definition"></a></dt>
+<dd><p>Same, restricted to <code class="docutils literal notranslate"><span class="pre">gene_present</span></code> rows.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.score.ScoreSummary.mean_delta_t">
+<span class="sig-name descname"><span class="pre">mean_delta_t</span></span><a class="headerlink" href="#scripts.torch_pipeline.score.ScoreSummary.mean_delta_t" title="Link to this definition"></a></dt>
+<dd><p>Signed mean of <code class="docutils literal notranslate"><span class="pre">perturbed_t</span> <span class="pre">-</span> <span class="pre">baseline_t</span></code>.
+Negative -&gt; model thinks the perturbation rejuvenates;
+positive -&gt; ages.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.score.ScoreSummary.mean_delta_t_present">
+<span class="sig-name descname"><span class="pre">mean_delta_t_present</span></span><a class="headerlink" href="#scripts.torch_pipeline.score.ScoreSummary.mean_delta_t_present" title="Link to this definition"></a></dt>
+<dd><p>Signed mean restricted to <code class="docutils literal notranslate"><span class="pre">gene_present</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.score.ScoreSummary.abs_mean_delta_t">
+<span class="sig-name descname"><span class="pre">abs_mean_delta_t</span></span><a class="headerlink" href="#scripts.torch_pipeline.score.ScoreSummary.abs_mean_delta_t" title="Link to this definition"></a></dt>
+<dd><p>Mean of absolute <code class="docutils literal notranslate"><span class="pre">delta_t</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.score.ScoreSummary.direction">
+<span class="sig-name descname"><span class="pre">direction</span></span><a class="headerlink" href="#scripts.torch_pipeline.score.ScoreSummary.direction" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">inhibit</span></code> / <code class="docutils literal notranslate"><span class="pre">delete</span></code> / <code class="docutils literal notranslate"><span class="pre">overexpress</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.score.ScoreSummary.gene_ensembl">
+<span class="sig-name descname"><span class="pre">gene_ensembl</span></span><a class="headerlink" href="#scripts.torch_pipeline.score.ScoreSummary.gene_ensembl" title="Link to this definition"></a></dt>
+<dd><p>Resolved Ensembl ID of the perturbed gene.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.score.ScoreSummary.gene_token">
+<span class="sig-name descname"><span class="pre">gene_token</span></span><a class="headerlink" href="#scripts.torch_pipeline.score.ScoreSummary.gene_token" title="Link to this definition"></a></dt>
+<dd><p>Token ID in the model’s vocabulary.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)">int</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id0">
+<span class="sig-name descname"><span class="pre">n_cells</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></em><a class="headerlink" href="#id0" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id1">
+<span class="sig-name descname"><span class="pre">n_cells_with_gene</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></em><a class="headerlink" href="#id1" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id2">
+<span class="sig-name descname"><span class="pre">mean_mse</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></em><a class="headerlink" href="#id2" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id3">
+<span class="sig-name descname"><span class="pre">mean_mse_present</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></em><a class="headerlink" href="#id3" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id4">
+<span class="sig-name descname"><span class="pre">mean_delta_t</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></em><a class="headerlink" href="#id4" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id5">
+<span class="sig-name descname"><span class="pre">mean_delta_t_present</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></em><a class="headerlink" href="#id5" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id6">
+<span class="sig-name descname"><span class="pre">abs_mean_delta_t</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></em><a class="headerlink" href="#id6" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id7">
+<span class="sig-name descname"><span class="pre">direction</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></em><a class="headerlink" href="#id7" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id8">
+<span class="sig-name descname"><span class="pre">gene_ensembl</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></em><a class="headerlink" href="#id8" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id9">
+<span class="sig-name descname"><span class="pre">gene_token</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></em><a class="headerlink" href="#id9" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.score.score">
+<span class="sig-prename descclassname"><span class="pre">scripts.torch_pipeline.score.</span></span><span class="sig-name descname"><span class="pre">score</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">baseline_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">perturbed_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">paired_metadata</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">numpy.ndarray</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">numpy.ndarray</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">numpy.ndarray</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#scripts.torch_pipeline.score.ScoreSummary" title="scripts.torch_pipeline.score.ScoreSummary"><span class="pre">ScoreSummary</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/scripts/torch_pipeline/score.html#score"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#scripts.torch_pipeline.score.score" title="Link to this definition"></a></dt>
+<dd><p>Read both prediction dirs, compute per-cell MSE, return arrays + summary.</p>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="predict_runner.html" class="btn btn-neutral float-left" title="scripts.torch_pipeline.predict_runner" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="run_inhibit_temporal_mse.html" class="btn btn-neutral float-right" title="scripts.torch_pipeline.run_inhibit_temporal_mse" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Srijit Iyer.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

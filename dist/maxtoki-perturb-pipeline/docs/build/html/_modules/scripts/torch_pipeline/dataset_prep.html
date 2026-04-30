@@ -1,0 +1,563 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>scripts.torch_pipeline.dataset_prep &mdash; maxtoki-mlx torch_pipeline 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            maxtoki-mlx torch_pipeline
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../pipeline.html">Pipeline architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../spec_reference.html">Spec reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../delta_recipes.html">Running on Delta</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/spec.html">scripts.torch_pipeline.spec</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/tokenizer.html">scripts.torch_pipeline.tokenizer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/perturbation.html">scripts.torch_pipeline.perturbation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/dataset_prep.html">scripts.torch_pipeline.dataset_prep</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/predict_runner.html">scripts.torch_pipeline.predict_runner</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/score.html">scripts.torch_pipeline.score</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/run_inhibit_temporal_mse.html">scripts.torch_pipeline.run_inhibit_temporal_mse</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">maxtoki-mlx torch_pipeline</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">scripts.torch_pipeline.dataset_prep</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for scripts.torch_pipeline.dataset_prep</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Spec-driven dataset prep for zero-shot perturbation scoring.</span>
+
+<span class="sd">Given an :class:`ExperimentSpec`, materialize two HuggingFace datasets</span>
+<span class="sd">(baseline + perturbed) where each row is one (group, query_cell) pair:</span>
+
+<span class="sd">    baseline:  [&lt;bos&gt;, ctx_1, &lt;eos&gt;, ..., &lt;bos&gt;, ctx_K, &lt;eos&gt;,</span>
+<span class="sd">                &lt;boq&gt;, query, &lt;eoq&gt;, dummy_numeric]</span>
+<span class="sd">    perturbed: same structure, but query (and optionally context cells) have</span>
+<span class="sd">               the target gene perturbed via delete / inhibit / overexpress.</span>
+
+<span class="sd">Both datasets share row order so the scorer can join by index.</span>
+
+<span class="sd">Cell selection rules</span>
+<span class="sd">--------------------</span>
+<span class="sd">- ``context.strategy=self``: K=1, context = [query]. Equivalent to the old</span>
+<span class="sd">  cell-vs-itself baseline.</span>
+<span class="sd">- ``context.strategy=prefix``: cells in the same group whose pseudotime is</span>
+<span class="sd">  strictly less than the query&#39;s pseudotime, sorted ascending. Optionally</span>
+<span class="sd">  include the query itself. Capped to ``max_cells`` (keep latest if exceeded).</span>
+<span class="sd">- ``context.strategy=all_in_group``: every cell in the same group, sorted</span>
+<span class="sd">  by pseudotime. Capped to ``max_cells``.</span>
+<span class="sd">- ``context.strategy=explicit``: use ``context.explicit_indices`` as the</span>
+<span class="sd">  context for *every* query (useful for fixed reference trajectories).</span>
+
+<span class="sd">Length budget per cell</span>
+<span class="sd">----------------------</span>
+<span class="sd">With K context cells and 1 query, the input sequence costs::</span>
+
+<span class="sd">    K * (rve_len_with_bos_eos) + 1 + rve_len_query_only + 2_specials_around_query + 1_dummy</span>
+<span class="sd">  = K * rve_K + (rve_query - 2) + 4</span>
+<span class="sd">    where rve_K and rve_query include their own bos/eos.</span>
+
+<span class="sd">We solve for the per-cell RVE cap so the worst-case row fits in</span>
+<span class="sd">``spec.seq_length``.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Iterator</span><span class="p">,</span> <span class="n">Optional</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.perturbation</span><span class="w"> </span><span class="kn">import</span> <span class="n">perturb_tokens</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.spec</span><span class="w"> </span><span class="kn">import</span> <span class="n">ContextSpec</span><span class="p">,</span> <span class="n">ExperimentSpec</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.tokenizer</span><span class="w"> </span><span class="kn">import</span> <span class="n">CellTokenizer</span><span class="p">,</span> <span class="n">MODEL_INPUT_SIZE</span><span class="p">,</span> <span class="n">pick_dummy_numeric_token</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># h5ad helpers</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_ensembl_ids</span><span class="p">(</span><span class="n">adata</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+    <span class="n">var</span> <span class="o">=</span> <span class="n">adata</span><span class="o">.</span><span class="n">var</span>
+    <span class="k">if</span> <span class="s2">&quot;ensembl_id&quot;</span> <span class="ow">in</span> <span class="n">var</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">var</span><span class="p">[</span><span class="s2">&quot;ensembl_id&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+    <span class="k">if</span> <span class="s2">&quot;feature_id&quot;</span> <span class="ow">in</span> <span class="n">var</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">var</span><span class="p">[</span><span class="s2">&quot;feature_id&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+    <span class="n">names</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">adata</span><span class="o">.</span><span class="n">var_names</span><span class="o">.</span><span class="n">values</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">names</span><span class="o">.</span><span class="n">size</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">names</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">names</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;ENSG&quot;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">names</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+        <span class="s2">&quot;Need var[&#39;ensembl_id&#39;] / var[&#39;feature_id&#39;] / ENSG-prefixed var_names.&quot;</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_row_counts</span><span class="p">(</span><span class="n">adata</span><span class="p">,</span> <span class="n">i</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">scipy.sparse</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+
+    <span class="n">src</span> <span class="o">=</span> <span class="n">adata</span><span class="o">.</span><span class="n">raw</span><span class="o">.</span><span class="n">X</span> <span class="k">if</span> <span class="n">adata</span><span class="o">.</span><span class="n">raw</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">adata</span><span class="o">.</span><span class="n">X</span>
+    <span class="n">row</span> <span class="o">=</span> <span class="n">src</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">sp</span><span class="o">.</span><span class="n">issparse</span><span class="p">(</span><span class="n">row</span><span class="p">):</span>
+        <span class="n">row</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">row</span><span class="o">.</span><span class="n">todense</span><span class="p">())</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">row</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">row</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">row</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Cell selection per spec</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">_CellPick</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;An (index_into_adata, group_key, pseudotime, cell_id) record.&quot;&quot;&quot;</span>
+    <span class="n">idx</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">group</span><span class="p">:</span> <span class="nb">object</span>
+    <span class="n">pseudotime</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">cell_id</span><span class="p">:</span> <span class="nb">str</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_enumerate_cells</span><span class="p">(</span><span class="n">adata</span><span class="p">,</span> <span class="n">spec</span><span class="p">:</span> <span class="n">ExperimentSpec</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">_CellPick</span><span class="p">]:</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">adata</span><span class="o">.</span><span class="n">n_obs</span>
+    <span class="n">cell_id_col</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">cell_id_col</span>
+    <span class="k">if</span> <span class="n">cell_id_col</span> <span class="ow">and</span> <span class="n">cell_id_col</span> <span class="ow">in</span> <span class="n">adata</span><span class="o">.</span><span class="n">obs</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="n">cell_ids</span> <span class="o">=</span> <span class="n">adata</span><span class="o">.</span><span class="n">obs</span><span class="p">[</span><span class="n">cell_id_col</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span><span class="o">.</span><span class="n">values</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">cell_ids</span> <span class="o">=</span> <span class="n">adata</span><span class="o">.</span><span class="n">obs_names</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span><span class="o">.</span><span class="n">values</span>
+
+    <span class="k">if</span> <span class="n">spec</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">group_col</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">spec</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">group_col</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">adata</span><span class="o">.</span><span class="n">obs</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;group_col </span><span class="si">{</span><span class="n">spec</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">group_col</span><span class="si">!r}</span><span class="s2"> not in adata.obs&quot;</span><span class="p">)</span>
+        <span class="n">groups</span> <span class="o">=</span> <span class="n">adata</span><span class="o">.</span><span class="n">obs</span><span class="p">[</span><span class="n">spec</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">group_col</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">groups</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">spec</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">pseudotime_col</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">spec</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">pseudotime_col</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">adata</span><span class="o">.</span><span class="n">obs</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;pseudotime_col </span><span class="si">{</span><span class="n">spec</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">pseudotime_col</span><span class="si">!r}</span><span class="s2"> not in adata.obs&quot;</span><span class="p">)</span>
+        <span class="n">ptimes</span> <span class="o">=</span> <span class="n">adata</span><span class="o">.</span><span class="n">obs</span><span class="p">[</span><span class="n">spec</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">pseudotime_col</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">values</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">ptimes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="p">[</span>
+        <span class="n">_CellPick</span><span class="p">(</span><span class="n">idx</span><span class="o">=</span><span class="n">i</span><span class="p">,</span> <span class="n">group</span><span class="o">=</span><span class="n">groups</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">pseudotime</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">ptimes</span><span class="p">[</span><span class="n">i</span><span class="p">]),</span> <span class="n">cell_id</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">cell_ids</span><span class="p">[</span><span class="n">i</span><span class="p">]))</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+    <span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_filter_query_pool</span><span class="p">(</span><span class="n">picks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">_CellPick</span><span class="p">],</span> <span class="n">adata</span><span class="p">,</span> <span class="n">spec</span><span class="p">:</span> <span class="n">ExperimentSpec</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">_CellPick</span><span class="p">]:</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">spec</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter_obs</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">picks</span><span class="p">)</span>
+    <span class="n">keep</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">picks</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">col</span><span class="p">,</span> <span class="n">allowed</span> <span class="ow">in</span> <span class="n">spec</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter_obs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">col</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">adata</span><span class="o">.</span><span class="n">obs</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;query.filter_obs column </span><span class="si">{</span><span class="n">col</span><span class="si">!r}</span><span class="s2"> not in adata.obs&quot;</span><span class="p">)</span>
+        <span class="n">col_vals</span> <span class="o">=</span> <span class="n">adata</span><span class="o">.</span><span class="n">obs</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+        <span class="n">allowed_set</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">allowed</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">pk</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">picks</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">col_vals</span><span class="p">[</span><span class="n">pk</span><span class="o">.</span><span class="n">idx</span><span class="p">]</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">allowed_set</span><span class="p">:</span>
+                <span class="n">keep</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span><span class="p">,</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">picks</span><span class="p">,</span> <span class="n">keep</span><span class="p">)</span> <span class="k">if</span> <span class="n">k</span><span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_select_queries</span><span class="p">(</span><span class="n">picks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">_CellPick</span><span class="p">],</span> <span class="n">spec</span><span class="p">:</span> <span class="n">ExperimentSpec</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">_CellPick</span><span class="p">]:</span>
+    <span class="k">if</span> <span class="n">spec</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">strategy</span> <span class="o">==</span> <span class="s2">&quot;each_cell&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">picks</span>
+    <span class="k">if</span> <span class="n">spec</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">strategy</span> <span class="o">==</span> <span class="s2">&quot;latest_per_group&quot;</span><span class="p">:</span>
+        <span class="n">by_group</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">picks</span><span class="p">:</span>
+            <span class="n">cur</span> <span class="o">=</span> <span class="n">by_group</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">group</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">cur</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">p</span><span class="o">.</span><span class="n">pseudotime</span> <span class="o">&gt;</span> <span class="n">cur</span><span class="o">.</span><span class="n">pseudotime</span><span class="p">:</span>
+                <span class="n">by_group</span><span class="p">[</span><span class="n">p</span><span class="o">.</span><span class="n">group</span><span class="p">]</span> <span class="o">=</span> <span class="n">p</span>
+        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">by_group</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;unknown query.strategy: </span><span class="si">{</span><span class="n">spec</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">strategy</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_pool</span><span class="p">(</span>
+    <span class="n">all_cells</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">_CellPick</span><span class="p">],</span>
+    <span class="n">adata</span><span class="p">,</span>
+    <span class="n">cspec</span><span class="p">:</span> <span class="n">ContextSpec</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">_CellPick</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Resolve the pool ONCE (it&#39;s identical across queries when strategy==&#39;pool&#39;).&quot;&quot;&quot;</span>
+    <span class="n">keep</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">all_cells</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">col</span><span class="p">,</span> <span class="n">allowed</span> <span class="ow">in</span> <span class="n">cspec</span><span class="o">.</span><span class="n">pool_filter</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">col</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">adata</span><span class="o">.</span><span class="n">obs</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;context.pool_filter column </span><span class="si">{</span><span class="n">col</span><span class="si">!r}</span><span class="s2"> not in adata.obs&quot;</span><span class="p">)</span>
+        <span class="n">col_vals</span> <span class="o">=</span> <span class="n">adata</span><span class="o">.</span><span class="n">obs</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+        <span class="n">allowed_set</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">allowed</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">p</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">all_cells</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">col_vals</span><span class="p">[</span><span class="n">p</span><span class="o">.</span><span class="n">idx</span><span class="p">]</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">allowed_set</span><span class="p">:</span>
+                <span class="n">keep</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">pool</span> <span class="o">=</span> <span class="p">[</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span><span class="p">,</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">all_cells</span><span class="p">,</span> <span class="n">keep</span><span class="p">)</span> <span class="k">if</span> <span class="n">k</span><span class="p">]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">pool</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;context.pool_filter matched 0 cells: </span><span class="si">{</span><span class="n">cspec</span><span class="o">.</span><span class="n">pool_filter</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">sel</span> <span class="o">=</span> <span class="n">cspec</span><span class="o">.</span><span class="n">pool_select</span>
+    <span class="k">assert</span> <span class="n">sel</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">sel</span><span class="o">.</span><span class="n">sort_by</span> <span class="o">==</span> <span class="s2">&quot;pseudotime&quot;</span><span class="p">:</span>
+        <span class="n">pool</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">pool</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">p</span><span class="p">:</span> <span class="n">p</span><span class="o">.</span><span class="n">pseudotime</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">sel</span><span class="o">.</span><span class="n">sort_by</span> <span class="o">==</span> <span class="s2">&quot;obs_index&quot;</span><span class="p">:</span>
+        <span class="n">pool</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">pool</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">p</span><span class="p">:</span> <span class="n">p</span><span class="o">.</span><span class="n">idx</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;unknown pool_select.sort_by: </span><span class="si">{</span><span class="n">sel</span><span class="o">.</span><span class="n">sort_by</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">sel</span><span class="o">.</span><span class="n">n</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">pool</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">sel</span><span class="o">.</span><span class="n">pick</span> <span class="o">==</span> <span class="s2">&quot;first&quot;</span><span class="p">:</span>
+        <span class="n">chosen</span> <span class="o">=</span> <span class="n">pool</span><span class="p">[:</span><span class="n">n</span><span class="p">]</span>
+    <span class="k">elif</span> <span class="n">sel</span><span class="o">.</span><span class="n">pick</span> <span class="o">==</span> <span class="s2">&quot;last&quot;</span><span class="p">:</span>
+        <span class="n">chosen</span> <span class="o">=</span> <span class="n">pool</span><span class="p">[</span><span class="o">-</span><span class="n">n</span><span class="p">:]</span>
+    <span class="k">elif</span> <span class="n">sel</span><span class="o">.</span><span class="n">pick</span> <span class="o">==</span> <span class="s2">&quot;evenly_spaced&quot;</span><span class="p">:</span>
+        <span class="n">idxs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">pool</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">()</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+        <span class="n">chosen</span> <span class="o">=</span> <span class="p">[</span><span class="n">pool</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">idxs</span><span class="p">]</span>
+    <span class="k">elif</span> <span class="n">sel</span><span class="o">.</span><span class="n">pick</span> <span class="o">==</span> <span class="s2">&quot;random&quot;</span><span class="p">:</span>
+        <span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="n">sel</span><span class="o">.</span><span class="n">seed</span><span class="p">)</span>
+        <span class="n">idxs</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">rng</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">pool</span><span class="p">),</span> <span class="n">size</span><span class="o">=</span><span class="n">n</span><span class="p">,</span> <span class="n">replace</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>
+        <span class="n">chosen</span> <span class="o">=</span> <span class="p">[</span><span class="n">pool</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">idxs</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;unknown pool_select.pick: </span><span class="si">{</span><span class="n">sel</span><span class="o">.</span><span class="n">pick</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">cspec</span><span class="o">.</span><span class="n">ordering</span> <span class="o">==</span> <span class="s2">&quot;pseudotime&quot;</span><span class="p">:</span>
+        <span class="n">chosen</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">chosen</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">p</span><span class="p">:</span> <span class="n">p</span><span class="o">.</span><span class="n">pseudotime</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">cspec</span><span class="o">.</span><span class="n">ordering</span> <span class="o">==</span> <span class="s2">&quot;obs_index&quot;</span><span class="p">:</span>
+        <span class="n">chosen</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">chosen</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">p</span><span class="p">:</span> <span class="n">p</span><span class="o">.</span><span class="n">idx</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">chosen</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_select_context</span><span class="p">(</span>
+    <span class="n">query</span><span class="p">:</span> <span class="n">_CellPick</span><span class="p">,</span>
+    <span class="n">all_cells</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">_CellPick</span><span class="p">],</span>
+    <span class="n">cspec</span><span class="p">:</span> <span class="n">ContextSpec</span><span class="p">,</span>
+    <span class="n">pool_cache</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="n">_CellPick</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">_CellPick</span><span class="p">]:</span>
+    <span class="k">if</span> <span class="n">cspec</span><span class="o">.</span><span class="n">strategy</span> <span class="o">==</span> <span class="s2">&quot;self&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">query</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">cspec</span><span class="o">.</span><span class="n">strategy</span> <span class="o">==</span> <span class="s2">&quot;explicit&quot;</span><span class="p">:</span>
+        <span class="n">idx_to_pick</span> <span class="o">=</span> <span class="p">{</span><span class="n">p</span><span class="o">.</span><span class="n">idx</span><span class="p">:</span> <span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">all_cells</span><span class="p">}</span>
+        <span class="n">ctx</span> <span class="o">=</span> <span class="p">[</span><span class="n">idx_to_pick</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">cspec</span><span class="o">.</span><span class="n">explicit_indices</span> <span class="ow">or</span> <span class="p">[]</span> <span class="k">if</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">idx_to_pick</span><span class="p">]</span>
+        <span class="c1"># Preserve user-supplied order; truncate to keep latest max_cells</span>
+        <span class="k">return</span> <span class="n">ctx</span><span class="p">[</span><span class="o">-</span><span class="n">cspec</span><span class="o">.</span><span class="n">max_cells</span><span class="p">:]</span>
+
+    <span class="k">if</span> <span class="n">cspec</span><span class="o">.</span><span class="n">strategy</span> <span class="o">==</span> <span class="s2">&quot;pool&quot;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">pool_cache</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;pool_cache must be provided when strategy==&#39;pool&#39;&quot;</span><span class="p">)</span>
+        <span class="c1"># Pool is identical across queries; just respect max_cells as a final cap.</span>
+        <span class="k">return</span> <span class="n">pool_cache</span><span class="p">[</span><span class="o">-</span><span class="n">cspec</span><span class="o">.</span><span class="n">max_cells</span><span class="p">:]</span>
+
+    <span class="n">same_group</span> <span class="o">=</span> <span class="p">[</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">all_cells</span> <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">group</span> <span class="o">==</span> <span class="n">query</span><span class="o">.</span><span class="n">group</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">cspec</span><span class="o">.</span><span class="n">strategy</span> <span class="o">==</span> <span class="s2">&quot;prefix&quot;</span><span class="p">:</span>
+        <span class="n">cand</span> <span class="o">=</span> <span class="p">[</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">same_group</span> <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">pseudotime</span> <span class="o">&lt;</span> <span class="n">query</span><span class="o">.</span><span class="n">pseudotime</span><span class="p">]</span>
+    <span class="k">elif</span> <span class="n">cspec</span><span class="o">.</span><span class="n">strategy</span> <span class="o">==</span> <span class="s2">&quot;all_in_group&quot;</span><span class="p">:</span>
+        <span class="n">cand</span> <span class="o">=</span> <span class="p">[</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">same_group</span> <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">idx</span> <span class="o">!=</span> <span class="n">query</span><span class="o">.</span><span class="n">idx</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;unknown context.strategy: </span><span class="si">{</span><span class="n">cspec</span><span class="o">.</span><span class="n">strategy</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">cspec</span><span class="o">.</span><span class="n">include_self</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">idx</span> <span class="o">==</span> <span class="n">query</span><span class="o">.</span><span class="n">idx</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">cand</span><span class="p">):</span>
+        <span class="n">cand</span> <span class="o">=</span> <span class="n">cand</span> <span class="o">+</span> <span class="p">[</span><span class="n">query</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">cspec</span><span class="o">.</span><span class="n">ordering</span> <span class="o">==</span> <span class="s2">&quot;pseudotime&quot;</span><span class="p">:</span>
+        <span class="n">cand</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">cand</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">p</span><span class="p">:</span> <span class="n">p</span><span class="o">.</span><span class="n">pseudotime</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">cspec</span><span class="o">.</span><span class="n">ordering</span> <span class="o">==</span> <span class="s2">&quot;obs_index&quot;</span><span class="p">:</span>
+        <span class="n">cand</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">cand</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">p</span><span class="p">:</span> <span class="n">p</span><span class="o">.</span><span class="n">idx</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;unknown context.ordering: </span><span class="si">{</span><span class="n">cspec</span><span class="o">.</span><span class="n">ordering</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">cand</span><span class="p">:</span>
+        <span class="c1"># pre-trajectory cell with no valid context: fall back to self so the</span>
+        <span class="c1"># row is still scoreable (will yield delta_t ~= 0 by construction)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">query</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">cand</span><span class="p">[</span><span class="o">-</span><span class="n">cspec</span><span class="o">.</span><span class="n">max_cells</span><span class="p">:]</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Tokenization with shared length budget</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_tokenize_one_cell</span><span class="p">(</span><span class="n">adata</span><span class="p">,</span> <span class="n">ensembl_ids</span><span class="p">,</span> <span class="n">pick</span><span class="p">:</span> <span class="n">_CellPick</span><span class="p">,</span> <span class="n">tokenizer</span><span class="p">:</span> <span class="n">CellTokenizer</span><span class="p">,</span> <span class="n">max_len</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+    <span class="n">counts</span> <span class="o">=</span> <span class="n">_row_counts</span><span class="p">(</span><span class="n">adata</span><span class="p">,</span> <span class="n">pick</span><span class="o">.</span><span class="n">idx</span><span class="p">)</span>
+    <span class="n">n_counts_val</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">tokenize_expression</span><span class="p">(</span><span class="n">ensembl_ids</span><span class="p">,</span> <span class="n">counts</span><span class="p">,</span> <span class="n">n_counts</span><span class="o">=</span><span class="n">n_counts_val</span><span class="p">,</span> <span class="n">max_len</span><span class="o">=</span><span class="n">max_len</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_per_cell_max_len</span><span class="p">(</span><span class="n">seq_length</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">n_context</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;How many tokens (incl. BOS/EOS) each cell can use so the row fits in seq_length.</span>
+
+<span class="sd">    Row layout:</span>
+<span class="sd">        K context cells:  K * rve_K</span>
+<span class="sd">        query block:      &lt;boq&gt; + (query_genes) + &lt;eoq&gt;  = (rve_query - 2) + 2 = rve_query</span>
+<span class="sd">        trailing dummy:   1</span>
+<span class="sd">    Total = K * rve_K + rve_query + 1 &lt;= seq_length</span>
+<span class="sd">    Distribute equally: rve = (seq_length - 1) // (K + 1)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">k</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">n_context</span><span class="p">)</span>
+    <span class="n">rve</span> <span class="o">=</span> <span class="p">(</span><span class="n">seq_length</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">//</span> <span class="p">(</span><span class="n">k</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">min</span><span class="p">(</span><span class="n">rve</span><span class="p">,</span> <span class="n">MODEL_INPUT_SIZE</span><span class="p">)</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Record assembly</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_strip_bos_eos</span><span class="p">(</span><span class="n">toks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">bos</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">eos</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">toks</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">toks</span>
+    <span class="k">if</span> <span class="n">toks</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">bos</span><span class="p">:</span>
+        <span class="n">toks</span> <span class="o">=</span> <span class="n">toks</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+    <span class="k">if</span> <span class="n">toks</span> <span class="ow">and</span> <span class="n">toks</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">eos</span><span class="p">:</span>
+        <span class="n">toks</span> <span class="o">=</span> <span class="n">toks</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">toks</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_input_ids</span><span class="p">(</span>
+    <span class="n">context_cells</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>   <span class="c1"># each is [&lt;bos&gt;, genes, &lt;eos&gt;]</span>
+    <span class="n">query_cell</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>            <span class="c1"># [&lt;bos&gt;, genes, &lt;eos&gt;]</span>
+    <span class="n">boq_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">eoq_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">dummy_numeric</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">bos_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">eos_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+    <span class="n">out</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">ctx</span> <span class="ow">in</span> <span class="n">context_cells</span><span class="p">:</span>
+        <span class="n">out</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">ctx</span><span class="p">)</span>
+    <span class="n">query_genes</span> <span class="o">=</span> <span class="n">_strip_bos_eos</span><span class="p">(</span><span class="n">query_cell</span><span class="p">,</span> <span class="n">bos_id</span><span class="p">,</span> <span class="n">eos_id</span><span class="p">)</span>
+    <span class="n">out</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">boq_id</span><span class="p">)</span>
+    <span class="n">out</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">query_genes</span><span class="p">)</span>
+    <span class="n">out</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">eoq_id</span><span class="p">)</span>
+    <span class="n">out</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">dummy_numeric</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">out</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_maybe_perturb</span><span class="p">(</span>
+    <span class="n">cell_tokens</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+    <span class="n">apply</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">gene_token</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">direction</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">bos</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">eos</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">apply</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">cell_tokens</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">perturb_tokens</span><span class="p">(</span><span class="n">cell_tokens</span><span class="p">,</span> <span class="n">gene_token</span><span class="p">,</span> <span class="n">direction</span><span class="p">,</span> <span class="n">bos</span><span class="p">,</span> <span class="n">eos</span><span class="p">)</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Public entry point</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<div class="viewcode-block" id="build_paired_dataset">
+<a class="viewcode-back" href="../../../api/dataset_prep.html#scripts.torch_pipeline.dataset_prep.build_paired_dataset">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">build_paired_dataset</span><span class="p">(</span>
+    <span class="n">spec</span><span class="p">:</span> <span class="n">ExperimentSpec</span><span class="p">,</span>
+    <span class="n">tokenizer</span><span class="p">:</span> <span class="n">CellTokenizer</span><span class="p">,</span>
+    <span class="n">out_dir_baseline</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="n">out_dir_perturbed</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="n">gene_token</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">gene_ensembl</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Path</span><span class="p">,</span> <span class="n">Path</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Materialize baseline + perturbed datasets per the experiment spec.&quot;&quot;&quot;</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">anndata</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">ad</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">datasets</span>
+
+    <span class="n">spec</span><span class="o">.</span><span class="n">validate</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">has_temporal_tokens</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+            <span class="s2">&quot;tokenizer is missing &lt;boq&gt;/&lt;eoq&gt;/numeric tokens - point &quot;</span>
+            <span class="s2">&quot;MAXTOKI_TOKEN_DICT at the full BioNeMo dictionary.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">gene_token</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">gene_ensembl</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Pass gene_token and gene_ensembl (resolved by the caller).&quot;</span><span class="p">)</span>
+
+    <span class="n">adata</span> <span class="o">=</span> <span class="n">ad</span><span class="o">.</span><span class="n">read_h5ad</span><span class="p">(</span><span class="n">spec</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">h5ad</span><span class="p">)</span>
+    <span class="n">ensembl_ids</span> <span class="o">=</span> <span class="n">_resolve_ensembl_ids</span><span class="p">(</span><span class="n">adata</span><span class="p">)</span>
+    <span class="n">bos</span><span class="p">,</span> <span class="n">eos</span> <span class="o">=</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">bos_id</span><span class="p">,</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">eos_id</span>
+    <span class="n">boq</span><span class="p">,</span> <span class="n">eoq</span> <span class="o">=</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">boq_id</span><span class="p">,</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">eoq_id</span>
+    <span class="n">dummy_numeric</span> <span class="o">=</span> <span class="n">pick_dummy_numeric_token</span><span class="p">(</span><span class="n">tokenizer</span><span class="p">)</span>
+
+    <span class="n">all_picks</span> <span class="o">=</span> <span class="n">_enumerate_cells</span><span class="p">(</span><span class="n">adata</span><span class="p">,</span> <span class="n">spec</span><span class="p">)</span>
+    <span class="n">query_pool</span> <span class="o">=</span> <span class="n">_filter_query_pool</span><span class="p">(</span><span class="n">all_picks</span><span class="p">,</span> <span class="n">adata</span><span class="p">,</span> <span class="n">spec</span><span class="p">)</span>
+    <span class="n">queries</span> <span class="o">=</span> <span class="n">_select_queries</span><span class="p">(</span><span class="n">query_pool</span><span class="p">,</span> <span class="n">spec</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">queries</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;query selection produced 0 cells - check filters / strategy.&quot;</span><span class="p">)</span>
+
+    <span class="n">pool_cache</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="n">_CellPick</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">spec</span><span class="o">.</span><span class="n">context</span><span class="o">.</span><span class="n">strategy</span> <span class="o">==</span> <span class="s2">&quot;pool&quot;</span><span class="p">:</span>
+        <span class="n">pool_cache</span> <span class="o">=</span> <span class="n">_resolve_pool</span><span class="p">(</span><span class="n">all_picks</span><span class="p">,</span> <span class="n">adata</span><span class="p">,</span> <span class="n">spec</span><span class="o">.</span><span class="n">context</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;[info] pool resolved to </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">pool_cache</span><span class="p">)</span><span class="si">}</span><span class="s2"> cells: &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="p">[(</span><span class="n">p</span><span class="o">.</span><span class="n">cell_id</span><span class="p">,</span><span class="w"> </span><span class="nb">round</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">pseudotime</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">))</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">p</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">pool_cache</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">apply_ctx</span> <span class="o">=</span> <span class="p">(</span><span class="n">spec</span><span class="o">.</span><span class="n">perturbation</span><span class="o">.</span><span class="n">apply_to</span> <span class="o">==</span> <span class="s2">&quot;query_and_context&quot;</span><span class="p">)</span>
+    <span class="n">direction</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">perturbation</span><span class="o">.</span><span class="n">direction</span>
+
+    <span class="n">base_records</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">pert_records</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="n">cache</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>  <span class="c1"># idx -&gt; tokenized cell</span>
+
+    <span class="k">for</span> <span class="n">q</span> <span class="ow">in</span> <span class="n">queries</span><span class="p">:</span>
+        <span class="n">ctx_picks</span> <span class="o">=</span> <span class="n">_select_context</span><span class="p">(</span><span class="n">q</span><span class="p">,</span> <span class="n">all_picks</span><span class="p">,</span> <span class="n">spec</span><span class="o">.</span><span class="n">context</span><span class="p">,</span> <span class="n">pool_cache</span><span class="o">=</span><span class="n">pool_cache</span><span class="p">)</span>
+        <span class="n">per_cell_cap</span> <span class="o">=</span> <span class="n">_per_cell_max_len</span><span class="p">(</span><span class="n">spec</span><span class="o">.</span><span class="n">seq_length</span><span class="p">,</span> <span class="n">n_context</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">ctx_picks</span><span class="p">))</span>
+
+        <span class="n">ctx_tokens</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">cp</span> <span class="ow">in</span> <span class="n">ctx_picks</span><span class="p">:</span>
+            <span class="n">key</span> <span class="o">=</span> <span class="p">(</span><span class="n">cp</span><span class="o">.</span><span class="n">idx</span><span class="p">,</span> <span class="n">per_cell_cap</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">cache</span><span class="p">:</span>
+                <span class="n">cache</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">_tokenize_one_cell</span><span class="p">(</span><span class="n">adata</span><span class="p">,</span> <span class="n">ensembl_ids</span><span class="p">,</span> <span class="n">cp</span><span class="p">,</span> <span class="n">tokenizer</span><span class="p">,</span> <span class="n">per_cell_cap</span><span class="p">)</span>
+            <span class="n">ctx_tokens</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cache</span><span class="p">[</span><span class="n">key</span><span class="p">])</span>
+
+        <span class="n">q_key</span> <span class="o">=</span> <span class="p">(</span><span class="n">q</span><span class="o">.</span><span class="n">idx</span><span class="p">,</span> <span class="n">per_cell_cap</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">q_key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">cache</span><span class="p">:</span>
+            <span class="n">cache</span><span class="p">[</span><span class="n">q_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">_tokenize_one_cell</span><span class="p">(</span><span class="n">adata</span><span class="p">,</span> <span class="n">ensembl_ids</span><span class="p">,</span> <span class="n">q</span><span class="p">,</span> <span class="n">tokenizer</span><span class="p">,</span> <span class="n">per_cell_cap</span><span class="p">)</span>
+        <span class="n">query_tokens</span> <span class="o">=</span> <span class="n">cache</span><span class="p">[</span><span class="n">q_key</span><span class="p">]</span>
+
+        <span class="n">ctx_tokens_pert</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">_maybe_perturb</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">apply_ctx</span><span class="p">,</span> <span class="n">gene_token</span><span class="p">,</span> <span class="n">direction</span><span class="p">,</span> <span class="n">bos</span><span class="p">,</span> <span class="n">eos</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">ctx_tokens</span>
+        <span class="p">]</span>
+        <span class="n">query_tokens_pert</span> <span class="o">=</span> <span class="n">perturb_tokens</span><span class="p">(</span><span class="n">query_tokens</span><span class="p">,</span> <span class="n">gene_token</span><span class="p">,</span> <span class="n">direction</span><span class="p">,</span> <span class="n">bos</span><span class="p">,</span> <span class="n">eos</span><span class="p">)</span>
+
+        <span class="n">base_input_ids</span> <span class="o">=</span> <span class="n">_build_input_ids</span><span class="p">(</span>
+            <span class="n">ctx_tokens</span><span class="p">,</span> <span class="n">query_tokens</span><span class="p">,</span> <span class="n">boq</span><span class="p">,</span> <span class="n">eoq</span><span class="p">,</span> <span class="n">dummy_numeric</span><span class="p">,</span> <span class="n">bos</span><span class="p">,</span> <span class="n">eos</span>
+        <span class="p">)</span>
+        <span class="n">pert_input_ids</span> <span class="o">=</span> <span class="n">_build_input_ids</span><span class="p">(</span>
+            <span class="n">ctx_tokens_pert</span><span class="p">,</span> <span class="n">query_tokens_pert</span><span class="p">,</span> <span class="n">boq</span><span class="p">,</span> <span class="n">eoq</span><span class="p">,</span> <span class="n">dummy_numeric</span><span class="p">,</span> <span class="n">bos</span><span class="p">,</span> <span class="n">eos</span>
+        <span class="p">)</span>
+
+        <span class="n">meta</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;cell_id&quot;</span><span class="p">:</span> <span class="n">q</span><span class="o">.</span><span class="n">cell_id</span><span class="p">,</span>
+            <span class="s2">&quot;group&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">q</span><span class="o">.</span><span class="n">group</span><span class="p">),</span>
+            <span class="s2">&quot;query_pseudotime&quot;</span><span class="p">:</span> <span class="n">q</span><span class="o">.</span><span class="n">pseudotime</span><span class="p">,</span>
+            <span class="s2">&quot;context_pseudotimes&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">c</span><span class="o">.</span><span class="n">pseudotime</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">ctx_picks</span><span class="p">],</span>
+            <span class="s2">&quot;context_cell_ids&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">c</span><span class="o">.</span><span class="n">cell_id</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">ctx_picks</span><span class="p">],</span>
+            <span class="s2">&quot;n_context_cells&quot;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">ctx_picks</span><span class="p">),</span>
+            <span class="s2">&quot;gene_token&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">gene_token</span><span class="p">),</span>
+            <span class="s2">&quot;gene_ensembl&quot;</span><span class="p">:</span> <span class="n">gene_ensembl</span><span class="p">,</span>
+            <span class="s2">&quot;direction&quot;</span><span class="p">:</span> <span class="n">direction</span><span class="p">,</span>
+            <span class="s2">&quot;apply_to&quot;</span><span class="p">:</span> <span class="n">spec</span><span class="o">.</span><span class="n">perturbation</span><span class="o">.</span><span class="n">apply_to</span><span class="p">,</span>
+            <span class="s2">&quot;gene_present_in_query&quot;</span><span class="p">:</span> <span class="n">gene_token</span> <span class="ow">in</span> <span class="n">query_tokens</span><span class="p">,</span>
+        <span class="p">}</span>
+        <span class="n">base_records</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="o">**</span><span class="n">meta</span><span class="p">,</span> <span class="s2">&quot;input_ids&quot;</span><span class="p">:</span> <span class="n">base_input_ids</span><span class="p">,</span> <span class="s2">&quot;condition&quot;</span><span class="p">:</span> <span class="s2">&quot;baseline&quot;</span><span class="p">})</span>
+        <span class="n">pert_records</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="o">**</span><span class="n">meta</span><span class="p">,</span> <span class="s2">&quot;input_ids&quot;</span><span class="p">:</span> <span class="n">pert_input_ids</span><span class="p">,</span> <span class="s2">&quot;condition&quot;</span><span class="p">:</span> <span class="s2">&quot;perturbed&quot;</span><span class="p">})</span>
+
+    <span class="n">out_dir_baseline</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">out_dir_baseline</span><span class="p">)</span>
+    <span class="n">out_dir_perturbed</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">out_dir_perturbed</span><span class="p">)</span>
+    <span class="n">out_dir_baseline</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">out_dir_perturbed</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">base_ds</span> <span class="o">=</span> <span class="n">datasets</span><span class="o">.</span><span class="n">Dataset</span><span class="o">.</span><span class="n">from_list</span><span class="p">(</span><span class="n">base_records</span><span class="p">)</span>
+    <span class="n">pert_ds</span> <span class="o">=</span> <span class="n">datasets</span><span class="o">.</span><span class="n">Dataset</span><span class="o">.</span><span class="n">from_list</span><span class="p">(</span><span class="n">pert_records</span><span class="p">)</span>
+    <span class="n">base_ds</span><span class="o">.</span><span class="n">save_to_disk</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">out_dir_baseline</span><span class="p">))</span>
+    <span class="n">pert_ds</span><span class="o">.</span><span class="n">save_to_disk</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">out_dir_perturbed</span><span class="p">))</span>
+
+    <span class="n">summary</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;n_rows&quot;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">base_records</span><span class="p">),</span>
+        <span class="s2">&quot;seq_length&quot;</span><span class="p">:</span> <span class="n">spec</span><span class="o">.</span><span class="n">seq_length</span><span class="p">,</span>
+        <span class="s2">&quot;max_input_len_baseline&quot;</span><span class="p">:</span> <span class="nb">max</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;input_ids&quot;</span><span class="p">])</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">base_records</span><span class="p">),</span>
+        <span class="s2">&quot;max_input_len_perturbed&quot;</span><span class="p">:</span> <span class="nb">max</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;input_ids&quot;</span><span class="p">])</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">pert_records</span><span class="p">),</span>
+        <span class="s2">&quot;min_context_cells&quot;</span><span class="p">:</span> <span class="nb">min</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;n_context_cells&quot;</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">base_records</span><span class="p">),</span>
+        <span class="s2">&quot;max_context_cells&quot;</span><span class="p">:</span> <span class="nb">max</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;n_context_cells&quot;</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">base_records</span><span class="p">),</span>
+        <span class="s2">&quot;n_groups&quot;</span><span class="p">:</span> <span class="nb">len</span><span class="p">({</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;group&quot;</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">base_records</span><span class="p">}),</span>
+        <span class="s2">&quot;gene_ensembl&quot;</span><span class="p">:</span> <span class="n">gene_ensembl</span><span class="p">,</span>
+        <span class="s2">&quot;gene_token&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">gene_token</span><span class="p">),</span>
+        <span class="s2">&quot;direction&quot;</span><span class="p">:</span> <span class="n">direction</span><span class="p">,</span>
+        <span class="s2">&quot;apply_to&quot;</span><span class="p">:</span> <span class="n">spec</span><span class="o">.</span><span class="n">perturbation</span><span class="o">.</span><span class="n">apply_to</span><span class="p">,</span>
+        <span class="s2">&quot;context_strategy&quot;</span><span class="p">:</span> <span class="n">spec</span><span class="o">.</span><span class="n">context</span><span class="o">.</span><span class="n">strategy</span><span class="p">,</span>
+        <span class="s2">&quot;query_strategy&quot;</span><span class="p">:</span> <span class="n">spec</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">strategy</span><span class="p">,</span>
+        <span class="s2">&quot;n_query_cells_with_gene&quot;</span><span class="p">:</span> <span class="nb">sum</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;gene_present_in_query&quot;</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">base_records</span><span class="p">),</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">out_dir_baseline</span><span class="p">,</span> <span class="n">out_dir_perturbed</span><span class="p">,</span> <span class="n">summary</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Srijit Iyer.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

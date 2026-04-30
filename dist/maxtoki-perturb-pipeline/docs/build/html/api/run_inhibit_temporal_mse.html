@@ -1,0 +1,157 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>scripts.torch_pipeline.run_inhibit_temporal_mse &mdash; maxtoki-mlx torch_pipeline 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="prev" title="scripts.torch_pipeline.score" href="score.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            maxtoki-mlx torch_pipeline
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../pipeline.html">Pipeline architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../spec_reference.html">Spec reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../delta_recipes.html">Running on Delta</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="spec.html">scripts.torch_pipeline.spec</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tokenizer.html">scripts.torch_pipeline.tokenizer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="perturbation.html">scripts.torch_pipeline.perturbation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="dataset_prep.html">scripts.torch_pipeline.dataset_prep</a></li>
+<li class="toctree-l1"><a class="reference internal" href="predict_runner.html">scripts.torch_pipeline.predict_runner</a></li>
+<li class="toctree-l1"><a class="reference internal" href="score.html">scripts.torch_pipeline.score</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">scripts.torch_pipeline.run_inhibit_temporal_mse</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#scripts.torch_pipeline.run_inhibit_temporal_mse.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">maxtoki-mlx torch_pipeline</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">scripts.torch_pipeline.run_inhibit_temporal_mse</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/api/run_inhibit_temporal_mse.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="scripts-torch-pipeline-run-inhibit-temporal-mse">
+<h1>scripts.torch_pipeline.run_inhibit_temporal_mse<a class="headerlink" href="#scripts-torch-pipeline-run-inhibit-temporal-mse" title="Link to this heading"></a></h1>
+<p>End-to-end CLI driver. The <code class="docutils literal notranslate"><span class="pre">main()</span></code> function below is what
+<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">scripts.torch_pipeline.run_inhibit_temporal_mse</span> <span class="pre">...</span></code> calls.</p>
+<p id="module-scripts.torch_pipeline.run_inhibit_temporal_mse">End-to-end zero-shot perturbation -&gt; temporal MSE driver.</p>
+<dl class="simple">
+<dt>Pipeline (three stages):</dt><dd><ol class="arabic simple">
+<li><p>Build paired (baseline, perturbed) HF datasets from the experiment
+spec. The spec controls h5ad path, pseudotime / group columns, context
+selection, query selection, and the gene KO target. See spec.py.</p></li>
+<li><p>Run the upstream BioNeMo headless predict step on each dataset
+(writes predictions__rank_*.pt under &lt;out&gt;/baseline_predictions and
+&lt;out&gt;/perturbed_predictions).</p></li>
+<li><p>Read both prediction dirs, compute per-row delta_t and dataset MSE.</p></li>
+</ol>
+</dd>
+</dl>
+<p>Stages 1 and 3 run anywhere (numpy / torch only). Stage 2 needs the BioNeMo
+container (bionemo + nemo + megatron).</p>
+<p>Usage:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="o">-</span><span class="n">m</span> <span class="n">scripts</span><span class="o">.</span><span class="n">torch_pipeline</span><span class="o">.</span><span class="n">run_inhibit_temporal_mse</span> \
+    <span class="o">--</span><span class="n">spec</span> <span class="o">./</span><span class="n">configs</span><span class="o">/</span><span class="n">zlx1_inhibit</span><span class="o">.</span><span class="n">yaml</span> \
+    <span class="o">--</span><span class="n">ckpt</span><span class="o">-</span><span class="nb">dir</span> <span class="o">/</span><span class="n">weights</span><span class="o">/</span><span class="n">maxtoki</span><span class="o">-</span><span class="mi">1</span><span class="n">b</span><span class="o">-</span><span class="n">bionemo</span> \
+    <span class="o">--</span><span class="n">tokenizer</span><span class="o">-</span><span class="n">path</span> <span class="o">/</span><span class="n">weights</span><span class="o">/</span><span class="n">maxtoki</span><span class="o">-</span><span class="mi">1</span><span class="n">b</span><span class="o">-</span><span class="n">bionemo</span><span class="o">/</span><span class="n">context</span><span class="o">/</span><span class="n">token_dictionary</span><span class="o">.</span><span class="n">json</span> \
+    <span class="o">--</span><span class="n">variant</span> <span class="mi">1</span><span class="n">b</span> \
+    <span class="o">--</span><span class="n">out</span><span class="o">-</span><span class="nb">dir</span> <span class="o">./</span><span class="n">out</span><span class="o">/</span><span class="n">zlx1</span>
+</pre></div>
+</div>
+<p>CLI overrides: –gene / –gene-symbol / –direction / –seq-length /
+–h5ad let you tweak a single field of the spec without editing the YAML.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.run_inhibit_temporal_mse.main">
+<span class="sig-prename descclassname"><span class="pre">scripts.torch_pipeline.run_inhibit_temporal_mse.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../_modules/scripts/torch_pipeline/run_inhibit_temporal_mse.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#scripts.torch_pipeline.run_inhibit_temporal_mse.main" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="score.html" class="btn btn-neutral float-left" title="scripts.torch_pipeline.score" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Srijit Iyer.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

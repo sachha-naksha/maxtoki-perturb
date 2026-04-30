@@ -1,0 +1,252 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spec reference &mdash; maxtoki-mlx torch_pipeline 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=01f34227"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Running on Delta" href="delta_recipes.html" />
+    <link rel="prev" title="Pipeline architecture" href="pipeline.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            maxtoki-mlx torch_pipeline
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User guide</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pipeline.html">Pipeline architecture</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Spec reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#top-level-experimentspec">Top-level (<code class="xref py py-class docutils literal notranslate"><span class="pre">ExperimentSpec</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#data-dataspec"><code class="docutils literal notranslate"><span class="pre">data</span></code> – <code class="xref py py-class docutils literal notranslate"><span class="pre">DataSpec</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#context-contextspec"><code class="docutils literal notranslate"><span class="pre">context</span></code> – <code class="xref py py-class docutils literal notranslate"><span class="pre">ContextSpec</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#query-queryspec"><code class="docutils literal notranslate"><span class="pre">query</span></code> – <code class="xref py py-class docutils literal notranslate"><span class="pre">QuerySpec</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#perturbation-perturbationspec"><code class="docutils literal notranslate"><span class="pre">perturbation</span></code> – <code class="xref py py-class docutils literal notranslate"><span class="pre">PerturbationSpec</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#validation">Validation</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="delta_recipes.html">Running on Delta</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/spec.html">scripts.torch_pipeline.spec</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/tokenizer.html">scripts.torch_pipeline.tokenizer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/perturbation.html">scripts.torch_pipeline.perturbation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/dataset_prep.html">scripts.torch_pipeline.dataset_prep</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/predict_runner.html">scripts.torch_pipeline.predict_runner</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/score.html">scripts.torch_pipeline.score</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/run_inhibit_temporal_mse.html">scripts.torch_pipeline.run_inhibit_temporal_mse</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">maxtoki-mlx torch_pipeline</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Spec reference</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/spec_reference.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="spec-reference">
+<h1>Spec reference<a class="headerlink" href="#spec-reference" title="Link to this heading"></a></h1>
+<p>This page lists every field in the YAML / JSON spec. The dataclass
+definitions live in <a class="reference internal" href="api/spec.html#module-scripts.torch_pipeline.spec" title="scripts.torch_pipeline.spec"><code class="xref py py-mod docutils literal notranslate"><span class="pre">scripts.torch_pipeline.spec</span></code></a>.</p>
+<section id="top-level-experimentspec">
+<h2>Top-level (<a class="reference internal" href="api/spec.html#scripts.torch_pipeline.spec.ExperimentSpec" title="scripts.torch_pipeline.spec.ExperimentSpec"><code class="xref py py-class docutils literal notranslate"><span class="pre">ExperimentSpec</span></code></a>)<a class="headerlink" href="#top-level-experimentspec" title="Link to this heading"></a></h2>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">data</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="w"> </span><span class="nv">...</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w">              </span><span class="c1"># required</span>
+<span class="nt">context</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="w"> </span><span class="nv">...</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w">           </span><span class="c1"># default = ContextSpec()</span>
+<span class="nt">query</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="w"> </span><span class="nv">...</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w">             </span><span class="c1"># default = QuerySpec()</span>
+<span class="nt">perturbation</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="w"> </span><span class="nv">...</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w">      </span><span class="c1"># required (gene or gene_symbol)</span>
+<span class="nt">seq_length</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">16384</span><span class="w">          </span><span class="c1"># model context length</span>
+</pre></div>
+</div>
+</section>
+<section id="data-dataspec">
+<h2><code class="docutils literal notranslate"><span class="pre">data</span></code> – <a class="reference internal" href="api/spec.html#scripts.torch_pipeline.spec.DataSpec" title="scripts.torch_pipeline.spec.DataSpec"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataSpec</span></code></a><a class="headerlink" href="#data-dataspec" title="Link to this heading"></a></h2>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">data</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">h5ad</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./data/4111_cells.h5ad</span><span class="w">   </span><span class="c1"># required</span>
+<span class="w">  </span><span class="nt">pseudotime_col</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pseudotime</span><span class="w">     </span><span class="c1"># optional, required by prefix/all_in_group/pool(sort_by=pseudotime)</span>
+<span class="w">  </span><span class="nt">group_col</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">donor_id</span><span class="w">            </span><span class="c1"># optional, required by prefix/all_in_group</span>
+<span class="w">  </span><span class="nt">cell_id_col</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">              </span><span class="c1"># null -&gt; use adata.obs_names</span>
+<span class="w">  </span><span class="nt">count_col</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">n_counts</span><span class="w">            </span><span class="c1"># null -&gt; compute from X.sum() per row</span>
+</pre></div>
+</div>
+</section>
+<section id="context-contextspec">
+<h2><code class="docutils literal notranslate"><span class="pre">context</span></code> – <a class="reference internal" href="api/spec.html#scripts.torch_pipeline.spec.ContextSpec" title="scripts.torch_pipeline.spec.ContextSpec"><code class="xref py py-class docutils literal notranslate"><span class="pre">ContextSpec</span></code></a><a class="headerlink" href="#context-contextspec" title="Link to this heading"></a></h2>
+<p>The trajectory of past cells the model conditions on.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p><code class="docutils literal notranslate"><span class="pre">strategy</span></code></p></th>
+<th class="head"><p>what it does</p></th>
+<th class="head"><p>requires</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">self</span></code></p></td>
+<td><p>context = [query] (cell vs. itself)</p></td>
+<td><p>nothing</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">prefix</span></code></p></td>
+<td><p>same group, <code class="docutils literal notranslate"><span class="pre">pseudotime</span> <span class="pre">&lt;</span> <span class="pre">query.pseudotime</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">group_col</span></code>, <code class="docutils literal notranslate"><span class="pre">pseudotime_col</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">all_in_group</span></code></p></td>
+<td><p>same group, exclude query, sort by pseudotime</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">group_col</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">explicit</span></code></p></td>
+<td><p>fixed adata indices for every query</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">explicit_indices</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">pool</span></code></p></td>
+<td><p>filter by obs cols, sort, pick N</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">pool_filter</span></code>, <code class="docutils literal notranslate"><span class="pre">pool_select</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p>Common fields:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">context</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">strategy</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pool</span><span class="w">                   </span><span class="c1"># see table above</span>
+<span class="w">  </span><span class="nt">max_cells</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4</span><span class="w">                     </span><span class="c1"># final cap (in cells, not tokens)</span>
+<span class="w">  </span><span class="nt">ordering</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pseudotime</span><span class="w">             </span><span class="c1"># pseudotime | obs_index</span>
+<span class="w">  </span><span class="nt">include_self</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">              </span><span class="c1"># only used by prefix / all_in_group</span>
+</pre></div>
+</div>
+<p>Strategy-specific fields:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">context</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">strategy</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">explicit</span>
+<span class="w">  </span><span class="nt">explicit_indices</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">12</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">47</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">103</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">256</span><span class="p p-Indicator">]</span><span class="w">   </span><span class="c1"># adata.obs row indices</span>
+
+<span class="nt">context</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">strategy</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pool</span>
+<span class="w">  </span><span class="nt">pool_filter</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">donor_age</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">34</span><span class="p p-Indicator">]</span><span class="w">                </span><span class="c1"># OR donor_id: [...] / cell_type: [...]</span>
+<span class="w">  </span><span class="nt">pool_select</span><span class="p">:</span><span class="w">                     </span><span class="c1"># PoolSelect dataclass</span>
+<span class="w">    </span><span class="nt">n</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span><span class="w">                           </span><span class="c1"># how many cells to pick</span>
+<span class="w">    </span><span class="nt">pick</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">evenly_spaced</span><span class="w">            </span><span class="c1"># first | last | evenly_spaced | random</span>
+<span class="w">    </span><span class="nt">sort_by</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pseudotime</span><span class="w">            </span><span class="c1"># pseudotime | obs_index</span>
+<span class="w">    </span><span class="nt">seed</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span><span class="w">                        </span><span class="c1"># only used when pick=random</span>
+</pre></div>
+</div>
+</section>
+<section id="query-queryspec">
+<h2><code class="docutils literal notranslate"><span class="pre">query</span></code> – <a class="reference internal" href="api/spec.html#scripts.torch_pipeline.spec.QuerySpec" title="scripts.torch_pipeline.spec.QuerySpec"><code class="xref py py-class docutils literal notranslate"><span class="pre">QuerySpec</span></code></a><a class="headerlink" href="#query-queryspec" title="Link to this heading"></a></h2>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">query</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">strategy</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">each_cell</span><span class="w">              </span><span class="c1"># each_cell | latest_per_group</span>
+<span class="w">  </span><span class="nt">filter_obs</span><span class="p">:</span><span class="w">                      </span><span class="c1"># restrict to matching cells</span>
+<span class="w">    </span><span class="nt">cell_type</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;fibroblast&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">donor_age</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">80</span><span class="p p-Indicator">]</span>
+</pre></div>
+</div>
+</section>
+<section id="perturbation-perturbationspec">
+<h2><code class="docutils literal notranslate"><span class="pre">perturbation</span></code> – <a class="reference internal" href="api/spec.html#scripts.torch_pipeline.spec.PerturbationSpec" title="scripts.torch_pipeline.spec.PerturbationSpec"><code class="xref py py-class docutils literal notranslate"><span class="pre">PerturbationSpec</span></code></a><a class="headerlink" href="#perturbation-perturbationspec" title="Link to this heading"></a></h2>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">perturbation</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">gene</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ENSG00000109906</span><span class="w">            </span><span class="c1"># OR gene_symbol: ZLX1 (resolved to Ensembl)</span>
+<span class="w">  </span><span class="nt">direction</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">inhibit</span><span class="w">               </span><span class="c1"># inhibit | delete | overexpress</span>
+<span class="w">  </span><span class="nt">apply_to</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">query</span><span class="w">                  </span><span class="c1"># query | query_and_context</span>
+</pre></div>
+</div>
+<p>Token-grammar semantics:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">inhibit</span></code> -&gt; move the gene’s token to the lowest non-special position
+(just before <code class="docutils literal notranslate"><span class="pre">&lt;eoq&gt;</span></code> for the query, just before <code class="docutils literal notranslate"><span class="pre">&lt;eos&gt;</span></code> for context cells).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">delete</span></code> -&gt; remove the gene’s token entirely.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">overexpress</span></code> -&gt; move the gene’s token to the front (highest rank).</p></li>
+</ul>
+</section>
+<section id="validation">
+<h2>Validation<a class="headerlink" href="#validation" title="Link to this heading"></a></h2>
+<p><a class="reference internal" href="api/spec.html#scripts.torch_pipeline.spec.ExperimentSpec.validate" title="scripts.torch_pipeline.spec.ExperimentSpec.validate"><code class="xref py py-meth docutils literal notranslate"><span class="pre">validate()</span></code></a> raises
+<code class="docutils literal notranslate"><span class="pre">ValueError</span></code> for the typical mismatches:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">prefix</span></code> / <code class="docutils literal notranslate"><span class="pre">all_in_group</span></code> without <code class="docutils literal notranslate"><span class="pre">group_col</span></code> or <code class="docutils literal notranslate"><span class="pre">pseudotime_col</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">explicit</span></code> without <code class="docutils literal notranslate"><span class="pre">explicit_indices</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pool</span></code> without <code class="docutils literal notranslate"><span class="pre">pool_filter</span></code> or <code class="docutils literal notranslate"><span class="pre">pool_select</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">perturbation</span></code> without <code class="docutils literal notranslate"><span class="pre">gene</span></code> or <code class="docutils literal notranslate"><span class="pre">gene_symbol</span></code></p></li>
+</ul>
+<p>Every CLI invocation also writes <code class="docutils literal notranslate"><span class="pre">spec.resolved.json</span></code> under <code class="docutils literal notranslate"><span class="pre">--out-dir</span></code>
+with the fully merged spec (after CLI overrides) plus the resolved Ensembl
+ID and token ID, so the experiment is reproducible from logs alone.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="pipeline.html" class="btn btn-neutral float-left" title="Pipeline architecture" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="delta_recipes.html" class="btn btn-neutral float-right" title="Running on Delta" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Srijit Iyer.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

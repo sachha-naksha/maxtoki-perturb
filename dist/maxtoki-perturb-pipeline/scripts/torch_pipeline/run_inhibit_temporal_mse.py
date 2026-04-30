@@ -14,7 +14,7 @@ container (bionemo + nemo + megatron).
 
 Usage::
 
-    python scripts/torch_pipeline/run_inhibit_temporal_mse.py \\
+    python -m scripts.torch_pipeline.run_inhibit_temporal_mse \\
         --spec ./configs/zlx1_inhibit.yaml \\
         --ckpt-dir /weights/maxtoki-1b-bionemo \\
         --tokenizer-path /weights/maxtoki-1b-bionemo/context/token_dictionary.json \\
@@ -23,8 +23,6 @@ Usage::
 
 CLI overrides: --gene / --gene-symbol / --direction / --seq-length /
 --h5ad let you tweak a single field of the spec without editing the YAML.
-
-Optional W&B logging: pass --wandb-project to enable (offline-mode safe).
 """
 from __future__ import annotations
 
@@ -34,13 +32,10 @@ import os
 import sys
 from pathlib import Path
 
-# Bootstrap so sibling .py files import when run as `python file.py`
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from dataset_prep import build_paired_dataset
-from score import score
-from spec import ExperimentSpec, load_spec, spec_from_dict
-from tokenizer import CellTokenizer
+from .dataset_prep import build_paired_dataset
+from .score import score
+from .spec import ExperimentSpec, load_spec, spec_from_dict
+from .tokenizer import CellTokenizer
 
 
 def _resolve_gene_symbol(symbol: str) -> str:
@@ -82,75 +77,6 @@ def _apply_cli_overrides(spec: ExperimentSpec, args) -> ExperimentSpec:
     return spec
 
 
-def _maybe_init_wandb(args, spec: ExperimentSpec, ensembl: str, gene_token: int, out_dir: Path):
-    """Returns the active wandb run, or None if logging is disabled."""
-    if not args.wandb_project:
-        return None
-    try:
-        import wandb
-    except ImportError:
-        print("[warn] --wandb-project set but `wandb` not installed; skipping logging.")
-        return None
-    return wandb.init(
-        project=args.wandb_project,
-        entity=args.wandb_entity,
-        name=args.wandb_name or f"{ensembl}_{spec.perturbation.direction}_{args.variant}",
-        tags=args.wandb_tags,
-        mode=args.wandb_mode,
-        dir=str(out_dir),
-        config={
-            **spec.to_dict(),
-            "gene_ensembl": ensembl,
-            "gene_token": gene_token,
-            "variant": args.variant,
-            "ckpt_dir": args.ckpt_dir,
-            "tokenizer_path": args.tokenizer_path,
-            "h5ad": spec.data.h5ad,
-        },
-    )
-
-
-def _wandb_finalize(wandb_run, summary_dict, delta, gene_present, base_ds_dir, out_dir, ensembl, direction, variant):
-    if wandb_run is None:
-        return
-    import wandb
-    wandb_run.summary.update(summary_dict)
-    wandb_run.log({
-        "delta_t_hist": wandb.Histogram(delta),
-        "per_cell_mse_hist": wandb.Histogram(delta ** 2),
-    })
-    # Per-cell scatter: pseudotime vs delta_t
-    try:
-        import datasets as _ds
-        base_ds = _ds.load_from_disk(str(base_ds_dir))
-        ptimes = [r.get("query_pseudotime", float("nan")) for r in base_ds]
-        groups = [str(r.get("group", "")) for r in base_ds]
-        table = wandb.Table(
-            columns=["query_pseudotime", "delta_t", "per_cell_mse", "gene_present", "group"],
-            data=list(zip(ptimes, delta.tolist(), (delta ** 2).tolist(), gene_present, groups)),
-        )
-        wandb_run.log({
-            "per_cell_scatter": wandb.plot.scatter(
-                table, "query_pseudotime", "delta_t",
-                title=f"{ensembl} {direction} - per-cell Δt vs pseudotime",
-            ),
-            "per_cell_table": table,
-        })
-    except Exception as e:
-        print(f"[warn] wandb scatter / table skipped: {e}")
-    # Artifact bundle
-    art = wandb.Artifact(
-        f"scores_{ensembl}_{direction}_{variant}",
-        type="perturbation_scores",
-    )
-    for fname in ("scores.npz", "summary.json", "spec.resolved.json", "prep_summary.json"):
-        fpath = out_dir / fname
-        if fpath.exists():
-            art.add_file(str(fpath))
-    wandb_run.log_artifact(art)
-    wandb_run.finish()
-
-
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--spec", required=True, help="YAML or JSON ExperimentSpec")
@@ -177,15 +103,6 @@ def main() -> None:
     p.add_argument("--precision", default="bf16-mixed")
     p.add_argument("--prep-only", action="store_true")
     p.add_argument("--score-only", action="store_true")
-    # W&B knobs
-    p.add_argument("--wandb-project", default=None,
-                   help="W&B project name; presence of this flag enables logging")
-    p.add_argument("--wandb-entity", default=None)
-    p.add_argument("--wandb-name", default=None,
-                   help="run name; defaults to {gene}_{direction}_{variant}")
-    p.add_argument("--wandb-tags", nargs="*", default=None)
-    p.add_argument("--wandb-mode", default=None,
-                   choices=["online", "offline", "disabled"])
     args = p.parse_args()
 
     spec = load_spec(args.spec)
@@ -214,8 +131,6 @@ def main() -> None:
     with open(out_dir / "spec.resolved.json", "w") as f:
         json.dump({**spec.to_dict(), "gene_ensembl": ensembl, "gene_token": gene_token}, f, indent=2)
 
-    wandb_run = _maybe_init_wandb(args, spec, ensembl, gene_token, out_dir)
-
     if not args.score_only:
         print(f"[info] building paired datasets under {out_dir}")
         _, _, prep_summary = build_paired_dataset(
@@ -229,22 +144,16 @@ def main() -> None:
         with open(out_dir / "prep_summary.json", "w") as f:
             json.dump(prep_summary, f, indent=2)
         print(f"[info] prep_summary={json.dumps(prep_summary, indent=2)}")
-        if wandb_run is not None:
-            wandb_run.summary.update({f"prep/{k}": v for k, v in prep_summary.items()
-                                      if isinstance(v, (int, float, str, bool))})
 
     if args.prep_only:
         print("[info] --prep-only set; stopping after dataset build.")
-        if wandb_run is not None:
-            wandb_run.finish()
         return
 
     if not args.ckpt_dir:
         sys.exit("--ckpt-dir is required unless --prep-only is set.")
 
     if not args.score_only:
-        # Lazy: only import bionemo when we actually need it
-        from predict_runner import run_headless_predict
+        from .predict_runner import run_headless_predict
 
         for label, ds_dir, pred_dir in [
             ("baseline", base_ds_dir, base_pred_dir),
@@ -304,11 +213,6 @@ def main() -> None:
         json.dump(summary_dict, f, indent=2)
     print("=== summary ===")
     print(json.dumps(summary_dict, indent=2))
-
-    _wandb_finalize(
-        wandb_run, summary_dict, delta, gene_present, base_ds_dir, out_dir,
-        ensembl, spec.perturbation.direction, args.variant,
-    )
 
 
 if __name__ == "__main__":

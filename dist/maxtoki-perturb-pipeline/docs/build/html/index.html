@@ -1,0 +1,244 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>maxtoki-mlx torch_pipeline &mdash; maxtoki-mlx torch_pipeline 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=01f34227"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Installation" href="installation.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="#" class="icon icon-home">
+            maxtoki-mlx torch_pipeline
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pipeline.html">Pipeline architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="spec_reference.html">Spec reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="delta_recipes.html">Running on Delta</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/spec.html">scripts.torch_pipeline.spec</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/tokenizer.html">scripts.torch_pipeline.tokenizer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/perturbation.html">scripts.torch_pipeline.perturbation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/dataset_prep.html">scripts.torch_pipeline.dataset_prep</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/predict_runner.html">scripts.torch_pipeline.predict_runner</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/score.html">scripts.torch_pipeline.score</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/run_inhibit_temporal_mse.html">scripts.torch_pipeline.run_inhibit_temporal_mse</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="#">maxtoki-mlx torch_pipeline</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="#" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">maxtoki-mlx torch_pipeline</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="maxtoki-mlx-torch-pipeline">
+<h1>maxtoki-mlx torch_pipeline<a class="headerlink" href="#maxtoki-mlx-torch-pipeline" title="Link to this heading"></a></h1>
+<p>CUDA / x86 sibling of the <code class="docutils literal notranslate"><span class="pre">maxtoki_mlx</span></code> Apple-Silicon port. Runs <strong>inside the
+BioNeMo container</strong> on A100 / H200 (e.g. NCSA Delta), loading the upstream
+<a class="reference external" href="https://github.com/NVIDIA-Digital-Bio/maxToki">NVIDIA-Digital-Bio/maxToki</a>
+distcp checkpoint directly. The temporal head is the headless-MSE regression
+of <code class="docutils literal notranslate"><span class="pre">bionemo.maxtoki.model.MaxTokiFineTuneModel</span></code> – no separate temporal
+weights to extract.</p>
+<section id="what-this-pipeline-does">
+<h2>What this pipeline does<a class="headerlink" href="#what-this-pipeline-does" title="Link to this heading"></a></h2>
+<p>For each query cell <em>q</em> in your h5ad:</p>
+<ol class="arabic simple">
+<li><p><strong>Tokenize</strong> the cell with the rank-value encoder (descending by
+median-normalized expression).</p></li>
+<li><p><strong>Assemble context</strong>: a configurable set of past cells (per-donor prefix /
+cross-donor pool / explicit indices / cell-vs-itself), each rank-value
+tokenized.</p></li>
+<li><p><strong>Build paired records</strong> – baseline and perturbed – with the same row
+order. The perturbed row applies <code class="docutils literal notranslate"><span class="pre">inhibit</span></code> / <code class="docutils literal notranslate"><span class="pre">delete</span></code> / <code class="docutils literal notranslate"><span class="pre">overexpress</span></code>
+to the gene of interest in the query (and optionally in the context too).</p></li>
+<li><p><strong>Run the BioNeMo headless predict step</strong> twice (baseline + perturbed),
+producing per-row regression outputs at the <code class="docutils literal notranslate"><span class="pre">&lt;eoq&gt;</span></code> position (interpreted
+as “predicted time elapsed between context and query”).</p></li>
+<li><p><strong>Score</strong>: Δt = <code class="docutils literal notranslate"><span class="pre">perturbed</span> <span class="pre">-</span> <span class="pre">baseline</span></code>; per-row MSE = Δt²; dataset MSE =
+<code class="docutils literal notranslate"><span class="pre">mean(Δt²)</span></code>. Signed Δt is also kept so direction (aging / rejuvenation)
+is recoverable.</p></li>
+</ol>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">User guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#inside-the-bionemo-container-recommended-on-delta">Inside the BioNeMo container (recommended on Delta)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#outside-the-container-prep-score-only">Outside the container (prep + score only)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#token-dictionary">Token dictionary</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#building-the-docs">Building the docs</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="quickstart.html#stage-your-data">1. Stage your data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quickstart.html#edit-the-spec">2. Edit the spec</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quickstart.html#run">3. Run</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quickstart.html#outputs">4. Outputs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quickstart.html#recommended-sanity-checks">5. Recommended sanity checks</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="pipeline.html">Pipeline architecture</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="pipeline.html#why-the-row-layout-looks-like-that">Why the row layout looks like that</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pipeline.html#how-the-per-cell-rank-value-cap-is-computed">How the per-cell rank-value cap is computed</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pipeline.html#why-the-same-multitask-config-covers-both-217m-and-1b">Why the same multitask config covers both 217M and 1B</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pipeline.html#three-context-strategies-three-different-questions">Three context strategies, three different questions</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="spec_reference.html">Spec reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="spec_reference.html#top-level-experimentspec">Top-level (<code class="xref py py-class docutils literal notranslate"><span class="pre">ExperimentSpec</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="spec_reference.html#data-dataspec"><code class="docutils literal notranslate"><span class="pre">data</span></code> – <code class="xref py py-class docutils literal notranslate"><span class="pre">DataSpec</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="spec_reference.html#context-contextspec"><code class="docutils literal notranslate"><span class="pre">context</span></code> – <code class="xref py py-class docutils literal notranslate"><span class="pre">ContextSpec</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="spec_reference.html#query-queryspec"><code class="docutils literal notranslate"><span class="pre">query</span></code> – <code class="xref py py-class docutils literal notranslate"><span class="pre">QuerySpec</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="spec_reference.html#perturbation-perturbationspec"><code class="docutils literal notranslate"><span class="pre">perturbation</span></code> – <code class="xref py py-class docutils literal notranslate"><span class="pre">PerturbationSpec</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="spec_reference.html#validation">Validation</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="delta_recipes.html">Running on Delta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="delta_recipes.html#stage-the-bundle">1. Stage the bundle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="delta_recipes.html#stage-the-bionemo-distcp-checkpoint">2. Stage the BioNeMo distcp checkpoint</a></li>
+<li class="toctree-l2"><a class="reference internal" href="delta_recipes.html#stage-your-h5ad">3. Stage your h5ad</a></li>
+<li class="toctree-l2"><a class="reference internal" href="delta_recipes.html#slurm-script">4. SLURM script</a></li>
+<li class="toctree-l2"><a class="reference internal" href="delta_recipes.html#multi-gpu-tensor-context-parallel">5. Multi-GPU (tensor / context parallel)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="delta_recipes.html#sweeping-multiple-genes">6. Sweeping multiple genes</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/spec.html">scripts.torch_pipeline.spec</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api/spec.html#scripts.torch_pipeline.spec.DataSpec"><code class="docutils literal notranslate"><span class="pre">DataSpec</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/spec.html#scripts.torch_pipeline.spec.PoolSelect"><code class="docutils literal notranslate"><span class="pre">PoolSelect</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/spec.html#scripts.torch_pipeline.spec.ContextSpec"><code class="docutils literal notranslate"><span class="pre">ContextSpec</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/spec.html#scripts.torch_pipeline.spec.QuerySpec"><code class="docutils literal notranslate"><span class="pre">QuerySpec</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/spec.html#scripts.torch_pipeline.spec.PerturbationSpec"><code class="docutils literal notranslate"><span class="pre">PerturbationSpec</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/spec.html#scripts.torch_pipeline.spec.ExperimentSpec"><code class="docutils literal notranslate"><span class="pre">ExperimentSpec</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/spec.html#scripts.torch_pipeline.spec.load_spec"><code class="docutils literal notranslate"><span class="pre">load_spec()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/spec.html#scripts.torch_pipeline.spec.spec_from_dict"><code class="docutils literal notranslate"><span class="pre">spec_from_dict()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api/tokenizer.html">scripts.torch_pipeline.tokenizer</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api/tokenizer.html#scripts.torch_pipeline.tokenizer.CellTokenizer"><code class="docutils literal notranslate"><span class="pre">CellTokenizer</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/tokenizer.html#scripts.torch_pipeline.tokenizer.pick_dummy_numeric_token"><code class="docutils literal notranslate"><span class="pre">pick_dummy_numeric_token()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api/perturbation.html">scripts.torch_pipeline.perturbation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api/perturbation.html#scripts.torch_pipeline.perturbation.perturb_tokens"><code class="docutils literal notranslate"><span class="pre">perturb_tokens()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api/dataset_prep.html">scripts.torch_pipeline.dataset_prep</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api/dataset_prep.html#cell-selection-rules">Cell selection rules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/dataset_prep.html#length-budget-per-cell">Length budget per cell</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/dataset_prep.html#scripts.torch_pipeline.dataset_prep.build_paired_dataset"><code class="docutils literal notranslate"><span class="pre">build_paired_dataset()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api/predict_runner.html">scripts.torch_pipeline.predict_runner</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api/predict_runner.html#scripts.torch_pipeline.predict_runner.run_headless_predict"><code class="docutils literal notranslate"><span class="pre">run_headless_predict()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api/score.html">scripts.torch_pipeline.score</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api/score.html#scripts.torch_pipeline.score.load_predictions"><code class="docutils literal notranslate"><span class="pre">load_predictions()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/score.html#scripts.torch_pipeline.score.ScoreSummary"><code class="docutils literal notranslate"><span class="pre">ScoreSummary</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/score.html#scripts.torch_pipeline.score.score"><code class="docutils literal notranslate"><span class="pre">score()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api/run_inhibit_temporal_mse.html">scripts.torch_pipeline.run_inhibit_temporal_mse</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api/run_inhibit_temporal_mse.html#scripts.torch_pipeline.run_inhibit_temporal_mse.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+<section id="indices">
+<h2>Indices<a class="headerlink" href="#indices" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="genindex.html"><span class="std std-ref">Index</span></a></p></li>
+<li><p><a class="reference internal" href="py-modindex.html"><span class="std std-ref">Module Index</span></a></p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="installation.html" class="btn btn-neutral float-right" title="Installation" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Srijit Iyer.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,730 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>scripts.torch_pipeline.spec &mdash; maxtoki-mlx torch_pipeline 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="scripts.torch_pipeline.tokenizer" href="tokenizer.html" />
+    <link rel="prev" title="Running on Delta" href="../delta_recipes.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            maxtoki-mlx torch_pipeline
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../pipeline.html">Pipeline architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../spec_reference.html">Spec reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../delta_recipes.html">Running on Delta</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">scripts.torch_pipeline.spec</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#scripts.torch_pipeline.spec.DataSpec"><code class="docutils literal notranslate"><span class="pre">DataSpec</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.DataSpec.h5ad"><code class="docutils literal notranslate"><span class="pre">DataSpec.h5ad</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.DataSpec.pseudotime_col"><code class="docutils literal notranslate"><span class="pre">DataSpec.pseudotime_col</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.DataSpec.group_col"><code class="docutils literal notranslate"><span class="pre">DataSpec.group_col</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.DataSpec.cell_id_col"><code class="docutils literal notranslate"><span class="pre">DataSpec.cell_id_col</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.DataSpec.count_col"><code class="docutils literal notranslate"><span class="pre">DataSpec.count_col</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id0"><code class="docutils literal notranslate"><span class="pre">DataSpec.h5ad</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id1"><code class="docutils literal notranslate"><span class="pre">DataSpec.pseudotime_col</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id2"><code class="docutils literal notranslate"><span class="pre">DataSpec.group_col</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id3"><code class="docutils literal notranslate"><span class="pre">DataSpec.cell_id_col</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id4"><code class="docutils literal notranslate"><span class="pre">DataSpec.count_col</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#scripts.torch_pipeline.spec.PoolSelect"><code class="docutils literal notranslate"><span class="pre">PoolSelect</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.PoolSelect.n"><code class="docutils literal notranslate"><span class="pre">PoolSelect.n</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.PoolSelect.pick"><code class="docutils literal notranslate"><span class="pre">PoolSelect.pick</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.PoolSelect.sort_by"><code class="docutils literal notranslate"><span class="pre">PoolSelect.sort_by</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.PoolSelect.seed"><code class="docutils literal notranslate"><span class="pre">PoolSelect.seed</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#scripts.torch_pipeline.spec.ContextSpec"><code class="docutils literal notranslate"><span class="pre">ContextSpec</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.ContextSpec.strategy"><code class="docutils literal notranslate"><span class="pre">ContextSpec.strategy</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.ContextSpec.max_cells"><code class="docutils literal notranslate"><span class="pre">ContextSpec.max_cells</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.ContextSpec.ordering"><code class="docutils literal notranslate"><span class="pre">ContextSpec.ordering</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.ContextSpec.include_self"><code class="docutils literal notranslate"><span class="pre">ContextSpec.include_self</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.ContextSpec.explicit_indices"><code class="docutils literal notranslate"><span class="pre">ContextSpec.explicit_indices</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.ContextSpec.pool_filter"><code class="docutils literal notranslate"><span class="pre">ContextSpec.pool_filter</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.ContextSpec.pool_select"><code class="docutils literal notranslate"><span class="pre">ContextSpec.pool_select</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id5"><code class="docutils literal notranslate"><span class="pre">ContextSpec.strategy</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id6"><code class="docutils literal notranslate"><span class="pre">ContextSpec.max_cells</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id7"><code class="docutils literal notranslate"><span class="pre">ContextSpec.ordering</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id8"><code class="docutils literal notranslate"><span class="pre">ContextSpec.include_self</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id9"><code class="docutils literal notranslate"><span class="pre">ContextSpec.explicit_indices</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id10"><code class="docutils literal notranslate"><span class="pre">ContextSpec.pool_filter</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id11"><code class="docutils literal notranslate"><span class="pre">ContextSpec.pool_select</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#scripts.torch_pipeline.spec.QuerySpec"><code class="docutils literal notranslate"><span class="pre">QuerySpec</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.QuerySpec.strategy"><code class="docutils literal notranslate"><span class="pre">QuerySpec.strategy</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.QuerySpec.filter_obs"><code class="docutils literal notranslate"><span class="pre">QuerySpec.filter_obs</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id12"><code class="docutils literal notranslate"><span class="pre">QuerySpec.strategy</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id13"><code class="docutils literal notranslate"><span class="pre">QuerySpec.filter_obs</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#scripts.torch_pipeline.spec.PerturbationSpec"><code class="docutils literal notranslate"><span class="pre">PerturbationSpec</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.PerturbationSpec.gene"><code class="docutils literal notranslate"><span class="pre">PerturbationSpec.gene</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.PerturbationSpec.gene_symbol"><code class="docutils literal notranslate"><span class="pre">PerturbationSpec.gene_symbol</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.PerturbationSpec.direction"><code class="docutils literal notranslate"><span class="pre">PerturbationSpec.direction</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.PerturbationSpec.apply_to"><code class="docutils literal notranslate"><span class="pre">PerturbationSpec.apply_to</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id14"><code class="docutils literal notranslate"><span class="pre">PerturbationSpec.gene</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id15"><code class="docutils literal notranslate"><span class="pre">PerturbationSpec.gene_symbol</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id16"><code class="docutils literal notranslate"><span class="pre">PerturbationSpec.direction</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id17"><code class="docutils literal notranslate"><span class="pre">PerturbationSpec.apply_to</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#scripts.torch_pipeline.spec.ExperimentSpec"><code class="docutils literal notranslate"><span class="pre">ExperimentSpec</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.ExperimentSpec.data"><code class="docutils literal notranslate"><span class="pre">ExperimentSpec.data</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.ExperimentSpec.context"><code class="docutils literal notranslate"><span class="pre">ExperimentSpec.context</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.ExperimentSpec.query"><code class="docutils literal notranslate"><span class="pre">ExperimentSpec.query</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.ExperimentSpec.perturbation"><code class="docutils literal notranslate"><span class="pre">ExperimentSpec.perturbation</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.ExperimentSpec.seq_length"><code class="docutils literal notranslate"><span class="pre">ExperimentSpec.seq_length</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id18"><code class="docutils literal notranslate"><span class="pre">ExperimentSpec.data</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id19"><code class="docutils literal notranslate"><span class="pre">ExperimentSpec.context</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id20"><code class="docutils literal notranslate"><span class="pre">ExperimentSpec.query</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id21"><code class="docutils literal notranslate"><span class="pre">ExperimentSpec.perturbation</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id22"><code class="docutils literal notranslate"><span class="pre">ExperimentSpec.seq_length</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.ExperimentSpec.validate"><code class="docutils literal notranslate"><span class="pre">ExperimentSpec.validate()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#scripts.torch_pipeline.spec.ExperimentSpec.to_dict"><code class="docutils literal notranslate"><span class="pre">ExperimentSpec.to_dict()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#scripts.torch_pipeline.spec.load_spec"><code class="docutils literal notranslate"><span class="pre">load_spec()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#scripts.torch_pipeline.spec.spec_from_dict"><code class="docutils literal notranslate"><span class="pre">spec_from_dict()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="tokenizer.html">scripts.torch_pipeline.tokenizer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="perturbation.html">scripts.torch_pipeline.perturbation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="dataset_prep.html">scripts.torch_pipeline.dataset_prep</a></li>
+<li class="toctree-l1"><a class="reference internal" href="predict_runner.html">scripts.torch_pipeline.predict_runner</a></li>
+<li class="toctree-l1"><a class="reference internal" href="score.html">scripts.torch_pipeline.score</a></li>
+<li class="toctree-l1"><a class="reference internal" href="run_inhibit_temporal_mse.html">scripts.torch_pipeline.run_inhibit_temporal_mse</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">maxtoki-mlx torch_pipeline</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">scripts.torch_pipeline.spec</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/api/spec.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-scripts.torch_pipeline.spec">
+<span id="scripts-torch-pipeline-spec"></span><h1>scripts.torch_pipeline.spec<a class="headerlink" href="#module-scripts.torch_pipeline.spec" title="Link to this heading"></a></h1>
+<p>Spec for what to feed the model in a zero-shot perturbation experiment.</p>
+<p>The spec answers four questions per row of the prepared dataset:</p>
+<blockquote>
+<div><ol class="arabic simple">
+<li><p>Which cell is the QUERY (the cell whose temporal prediction will shift
+under perturbation)?</p></li>
+<li><p>Which cells form the CONTEXT (the trajectory of past cells the model
+conditions on, in pseudotime order)?</p></li>
+<li><p>WHICH GENE is being KO’d / inhibited / overexpressed?</p></li>
+<li><p>Where is the perturbation applied – query only, or also in context?</p></li>
+</ol>
+</div></blockquote>
+<p>A spec is normally written as YAML / JSON and loaded with <code class="docutils literal notranslate"><span class="pre">load_spec</span></code>.
+Programmatic construction works too – it’s just a dataclass.</p>
+<p>YAML example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">data</span><span class="p">:</span>
+  <span class="n">h5ad</span><span class="p">:</span> <span class="o">./</span><span class="n">data</span><span class="o">/</span><span class="mi">4111</span><span class="n">_cells</span><span class="o">.</span><span class="n">h5ad</span>
+  <span class="n">pseudotime_col</span><span class="p">:</span> <span class="n">pseudotime</span>         <span class="c1"># obs column used for ordering</span>
+  <span class="n">group_col</span><span class="p">:</span> <span class="n">donor_id</span>                <span class="c1"># cells of the same group share a trajectory</span>
+  <span class="n">cell_id_col</span><span class="p">:</span> <span class="n">null</span>                  <span class="c1"># defaults to obs_names</span>
+  <span class="n">count_col</span><span class="p">:</span> <span class="n">n_counts</span>                <span class="c1"># null -&gt; compute from X.sum()</span>
+
+<span class="n">context</span><span class="p">:</span>
+  <span class="n">strategy</span><span class="p">:</span> <span class="n">prefix</span>                   <span class="c1"># self | prefix | all_in_group | explicit</span>
+  <span class="n">max_cells</span><span class="p">:</span> <span class="mi">4</span>                       <span class="c1"># cap context length (in cells, not tokens)</span>
+  <span class="n">ordering</span><span class="p">:</span> <span class="n">pseudotime</span>               <span class="c1"># pseudotime | obs_index</span>
+  <span class="n">include_self</span><span class="p">:</span> <span class="n">false</span>                <span class="c1"># when prefix/all_in_group, include the query?</span>
+  <span class="n">explicit_indices</span><span class="p">:</span> <span class="n">null</span>             <span class="c1"># list[int] when strategy == explicit</span>
+
+<span class="n">query</span><span class="p">:</span>
+  <span class="n">strategy</span><span class="p">:</span> <span class="n">each_cell</span>                <span class="c1"># each_cell | latest_per_group</span>
+  <span class="n">filter_obs</span><span class="p">:</span>                        <span class="c1"># optional - keep only cells matching these</span>
+    <span class="n">cell_type</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;fibroblast&quot;</span><span class="p">]</span>
+
+<span class="n">perturbation</span><span class="p">:</span>
+  <span class="n">gene_symbol</span><span class="p">:</span> <span class="n">ZLX1</span>                  <span class="c1"># one of gene / gene_symbol must be set</span>
+  <span class="n">gene</span><span class="p">:</span> <span class="n">null</span>                         <span class="c1"># Ensembl ID; takes precedence if set</span>
+  <span class="n">direction</span><span class="p">:</span> <span class="n">inhibit</span>                 <span class="c1"># inhibit | delete | overexpress</span>
+  <span class="n">apply_to</span><span class="p">:</span> <span class="n">query</span>                    <span class="c1"># query | query_and_context</span>
+</pre></div>
+</div>
+<p>Set <code class="docutils literal notranslate"><span class="pre">context.strategy:</span> <span class="pre">self</span></code> for the simple cell-vs-itself baseline
+(equivalent to the previous default). Set <code class="docutils literal notranslate"><span class="pre">query.strategy:</span> <span class="pre">latest_per_group</span></code>
+to score one prediction per donor / sample instead of per cell.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.DataSpec">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">scripts.torch_pipeline.spec.</span></span><span class="sig-name descname"><span class="pre">DataSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">h5ad</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">pseudotime_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">group_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cell_id_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">count_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'n_counts'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/scripts/torch_pipeline/spec.html#DataSpec"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#scripts.torch_pipeline.spec.DataSpec" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Where the cells live and which obs columns drive selection.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.DataSpec.h5ad">
+<span class="sig-name descname"><span class="pre">h5ad</span></span><a class="headerlink" href="#scripts.torch_pipeline.spec.DataSpec.h5ad" title="Link to this definition"></a></dt>
+<dd><p>Path to a single <code class="docutils literal notranslate"><span class="pre">.h5ad</span></code> file. Counts must live in <code class="docutils literal notranslate"><span class="pre">adata.X</span></code>
+or <code class="docutils literal notranslate"><span class="pre">adata.raw.X</span></code>; gene IDs in <code class="docutils literal notranslate"><span class="pre">var[&quot;ensembl_id&quot;]</span></code>,
+<code class="docutils literal notranslate"><span class="pre">var[&quot;feature_id&quot;]</span></code>, or ENSG-prefixed <code class="docutils literal notranslate"><span class="pre">var_names</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.DataSpec.pseudotime_col">
+<span class="sig-name descname"><span class="pre">pseudotime_col</span></span><a class="headerlink" href="#scripts.torch_pipeline.spec.DataSpec.pseudotime_col" title="Link to this definition"></a></dt>
+<dd><p>Name of an <code class="docutils literal notranslate"><span class="pre">obs</span></code> column with monotone pseudotime /
+age / observation-time values. Required by context strategies
+<code class="docutils literal notranslate"><span class="pre">prefix</span></code> and <code class="docutils literal notranslate"><span class="pre">all_in_group</span></code>, and by <code class="docutils literal notranslate"><span class="pre">pool_select.sort_by=&quot;pseudotime&quot;</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)">str</a> | None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.DataSpec.group_col">
+<span class="sig-name descname"><span class="pre">group_col</span></span><a class="headerlink" href="#scripts.torch_pipeline.spec.DataSpec.group_col" title="Link to this definition"></a></dt>
+<dd><p>Name of an <code class="docutils literal notranslate"><span class="pre">obs</span></code> column that groups cells into trajectories
+(e.g. <code class="docutils literal notranslate"><span class="pre">donor_id</span></code>). Required by <code class="docutils literal notranslate"><span class="pre">prefix</span></code> and <code class="docutils literal notranslate"><span class="pre">all_in_group</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)">str</a> | None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.DataSpec.cell_id_col">
+<span class="sig-name descname"><span class="pre">cell_id_col</span></span><a class="headerlink" href="#scripts.torch_pipeline.spec.DataSpec.cell_id_col" title="Link to this definition"></a></dt>
+<dd><p>Name of an <code class="docutils literal notranslate"><span class="pre">obs</span></code> column to use as the per-cell ID in
+output records. <code class="docutils literal notranslate"><span class="pre">None</span></code> falls back to <code class="docutils literal notranslate"><span class="pre">adata.obs_names</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)">str</a> | None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.DataSpec.count_col">
+<span class="sig-name descname"><span class="pre">count_col</span></span><a class="headerlink" href="#scripts.torch_pipeline.spec.DataSpec.count_col" title="Link to this definition"></a></dt>
+<dd><p>Name of an <code class="docutils literal notranslate"><span class="pre">obs</span></code> column holding pre-computed total UMI
+counts per cell. <code class="docutils literal notranslate"><span class="pre">None</span></code> re-computes from the count matrix.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)">str</a> | None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id0">
+<span class="sig-name descname"><span class="pre">h5ad</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></em><a class="headerlink" href="#id0" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id1">
+<span class="sig-name descname"><span class="pre">pseudotime_col</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id1" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id2">
+<span class="sig-name descname"><span class="pre">group_col</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id2" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id3">
+<span class="sig-name descname"><span class="pre">cell_id_col</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id3" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id4">
+<span class="sig-name descname"><span class="pre">count_col</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'n_counts'</span></em><a class="headerlink" href="#id4" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.PoolSelect">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">scripts.torch_pipeline.spec.</span></span><span class="sig-name descname"><span class="pre">PoolSelect</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">3</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pick</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'first'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'last'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'evenly_spaced'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'random'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'evenly_spaced'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sort_by</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'pseudotime'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'obs_index'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'pseudotime'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/scripts/torch_pipeline/spec.html#PoolSelect"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#scripts.torch_pipeline.spec.PoolSelect" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>How to choose context cells from a filtered pool (one pool, reused for every query).</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.PoolSelect.n">
+<span class="sig-name descname"><span class="pre">n</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">3</span></em><a class="headerlink" href="#scripts.torch_pipeline.spec.PoolSelect.n" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.PoolSelect.pick">
+<span class="sig-name descname"><span class="pre">pick</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'first'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'last'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'evenly_spaced'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'random'</span></span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'evenly_spaced'</span></em><a class="headerlink" href="#scripts.torch_pipeline.spec.PoolSelect.pick" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.PoolSelect.sort_by">
+<span class="sig-name descname"><span class="pre">sort_by</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'pseudotime'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'obs_index'</span></span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'pseudotime'</span></em><a class="headerlink" href="#scripts.torch_pipeline.spec.PoolSelect.sort_by" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.PoolSelect.seed">
+<span class="sig-name descname"><span class="pre">seed</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></em><a class="headerlink" href="#scripts.torch_pipeline.spec.PoolSelect.seed" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.ContextSpec">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">scripts.torch_pipeline.spec.</span></span><span class="sig-name descname"><span class="pre">ContextSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strategy:</span> <span class="pre">~typing.Literal['self'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">'prefix'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">'all_in_group'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">'explicit'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">'pool']</span> <span class="pre">=</span> <span class="pre">'self'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_cells:</span> <span class="pre">int</span> <span class="pre">=</span> <span class="pre">4</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ordering:</span> <span class="pre">~typing.Literal['pseudotime'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">'obs_index']</span> <span class="pre">=</span> <span class="pre">'pseudotime'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_self:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">explicit_indices:</span> <span class="pre">list[int]</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pool_filter:</span> <span class="pre">dict[str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">list[~typing.Any]]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pool_select:</span> <span class="pre">~scripts.torch_pipeline.spec.PoolSelect</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/scripts/torch_pipeline/spec.html#ContextSpec"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#scripts.torch_pipeline.spec.ContextSpec" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>How the trajectory of past cells (the context) is assembled per query.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.ContextSpec.strategy">
+<span class="sig-name descname"><span class="pre">strategy</span></span><a class="headerlink" href="#scripts.torch_pipeline.spec.ContextSpec.strategy" title="Link to this definition"></a></dt>
+<dd><p>One of <code class="docutils literal notranslate"><span class="pre">self</span></code> (cell vs. itself), <code class="docutils literal notranslate"><span class="pre">prefix</span></code> (same-group
+cells with smaller pseudotime), <code class="docutils literal notranslate"><span class="pre">all_in_group</span></code> (all other cells
+in same group), <code class="docutils literal notranslate"><span class="pre">explicit</span></code> (fixed adata indices for every query),
+or <code class="docutils literal notranslate"><span class="pre">pool</span></code> (filter then pick from a cross-group pool).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Literal[‘self’, ‘prefix’, ‘all_in_group’, ‘explicit’, ‘pool’]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.ContextSpec.max_cells">
+<span class="sig-name descname"><span class="pre">max_cells</span></span><a class="headerlink" href="#scripts.torch_pipeline.spec.ContextSpec.max_cells" title="Link to this definition"></a></dt>
+<dd><p>Final cap on number of context cells per row.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)">int</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.ContextSpec.ordering">
+<span class="sig-name descname"><span class="pre">ordering</span></span><a class="headerlink" href="#scripts.torch_pipeline.spec.ContextSpec.ordering" title="Link to this definition"></a></dt>
+<dd><p>How context cells are ordered in the input sequence.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Literal[‘pseudotime’, ‘obs_index’]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.ContextSpec.include_self">
+<span class="sig-name descname"><span class="pre">include_self</span></span><a class="headerlink" href="#scripts.torch_pipeline.spec.ContextSpec.include_self" title="Link to this definition"></a></dt>
+<dd><p>When <code class="docutils literal notranslate"><span class="pre">True</span></code> and strategy is <code class="docutils literal notranslate"><span class="pre">prefix</span></code> /
+<code class="docutils literal notranslate"><span class="pre">all_in_group</span></code>, append the query itself to the context.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)">bool</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.ContextSpec.explicit_indices">
+<span class="sig-name descname"><span class="pre">explicit_indices</span></span><a class="headerlink" href="#scripts.torch_pipeline.spec.ContextSpec.explicit_indices" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">adata.obs</span></code> row indices used as context for every
+query. Required when <code class="docutils literal notranslate"><span class="pre">strategy</span> <span class="pre">==</span> <span class="pre">&quot;explicit&quot;</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)">list</a>[<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)">int</a>] | None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.ContextSpec.pool_filter">
+<span class="sig-name descname"><span class="pre">pool_filter</span></span><a class="headerlink" href="#scripts.torch_pipeline.spec.ContextSpec.pool_filter" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">{obs_col:</span> <span class="pre">[allowed_values]}</span></code> filter applied to the
+full cell list. Required when <code class="docutils literal notranslate"><span class="pre">strategy</span> <span class="pre">==</span> <span class="pre">&quot;pool&quot;</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)">dict</a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)">list</a>[Any]]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.ContextSpec.pool_select">
+<span class="sig-name descname"><span class="pre">pool_select</span></span><a class="headerlink" href="#scripts.torch_pipeline.spec.ContextSpec.pool_select" title="Link to this definition"></a></dt>
+<dd><p>How to pick a fixed-size context from the filtered pool.
+Required when <code class="docutils literal notranslate"><span class="pre">strategy</span> <span class="pre">==</span> <span class="pre">&quot;pool&quot;</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#scripts.torch_pipeline.spec.PoolSelect" title="scripts.torch_pipeline.spec.PoolSelect">scripts.torch_pipeline.spec.PoolSelect</a> | None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id5">
+<span class="sig-name descname"><span class="pre">strategy</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'self'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'prefix'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'all_in_group'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'explicit'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pool'</span></span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'self'</span></em><a class="headerlink" href="#id5" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id6">
+<span class="sig-name descname"><span class="pre">max_cells</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">4</span></em><a class="headerlink" href="#id6" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id7">
+<span class="sig-name descname"><span class="pre">ordering</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'pseudotime'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'obs_index'</span></span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'pseudotime'</span></em><a class="headerlink" href="#id7" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id8">
+<span class="sig-name descname"><span class="pre">include_self</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#id8" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id9">
+<span class="sig-name descname"><span class="pre">explicit_indices</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id9" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id10">
+<span class="sig-name descname"><span class="pre">pool_filter</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id10" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id11">
+<span class="sig-name descname"><span class="pre">pool_select</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#scripts.torch_pipeline.spec.PoolSelect" title="scripts.torch_pipeline.spec.PoolSelect"><span class="pre">PoolSelect</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id11" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.QuerySpec">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">scripts.torch_pipeline.spec.</span></span><span class="sig-name descname"><span class="pre">QuerySpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strategy:</span> <span class="pre">~typing.Literal['each_cell'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">'latest_per_group']</span> <span class="pre">=</span> <span class="pre">'each_cell'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_obs:</span> <span class="pre">dict[str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">list[~typing.Any]]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/scripts/torch_pipeline/spec.html#QuerySpec"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#scripts.torch_pipeline.spec.QuerySpec" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Which cells become queries (one row each in the output dataset).</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.QuerySpec.strategy">
+<span class="sig-name descname"><span class="pre">strategy</span></span><a class="headerlink" href="#scripts.torch_pipeline.spec.QuerySpec.strategy" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">each_cell</span></code> -&gt; one row per cell; <code class="docutils literal notranslate"><span class="pre">latest_per_group</span></code> -&gt;
+one row per group, the cell with the largest pseudotime.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Literal[‘each_cell’, ‘latest_per_group’]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.QuerySpec.filter_obs">
+<span class="sig-name descname"><span class="pre">filter_obs</span></span><a class="headerlink" href="#scripts.torch_pipeline.spec.QuerySpec.filter_obs" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">{obs_col:</span> <span class="pre">[allowed_values]}</span></code> to score only matching
+cells (e.g. <code class="docutils literal notranslate"><span class="pre">{&quot;cell_type&quot;:</span> <span class="pre">[&quot;fibroblast&quot;]}</span></code>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)">dict</a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)">list</a>[Any]]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id12">
+<span class="sig-name descname"><span class="pre">strategy</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'each_cell'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'latest_per_group'</span></span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'each_cell'</span></em><a class="headerlink" href="#id12" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id13">
+<span class="sig-name descname"><span class="pre">filter_obs</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id13" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.PerturbationSpec">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">scripts.torch_pipeline.spec.</span></span><span class="sig-name descname"><span class="pre">PerturbationSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gene</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gene_symbol</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">direction</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'inhibit'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'delete'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'overexpress'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'inhibit'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">apply_to</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'query'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'query_and_context'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'query'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/scripts/torch_pipeline/spec.html#PerturbationSpec"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#scripts.torch_pipeline.spec.PerturbationSpec" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Which gene to perturb, how, and where it’s applied in the row.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.PerturbationSpec.gene">
+<span class="sig-name descname"><span class="pre">gene</span></span><a class="headerlink" href="#scripts.torch_pipeline.spec.PerturbationSpec.gene" title="Link to this definition"></a></dt>
+<dd><p>Ensembl ID (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;ENSG00000109906&quot;</span></code>). Takes precedence over
+<code class="docutils literal notranslate"><span class="pre">gene_symbol</span></code> if both are set.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)">str</a> | None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.PerturbationSpec.gene_symbol">
+<span class="sig-name descname"><span class="pre">gene_symbol</span></span><a class="headerlink" href="#scripts.torch_pipeline.spec.PerturbationSpec.gene_symbol" title="Link to this definition"></a></dt>
+<dd><p>HGNC symbol (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;ZLX1&quot;</span></code>). Resolved against the
+packaged <code class="docutils literal notranslate"><span class="pre">gene_name_id.json</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)">str</a> | None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.PerturbationSpec.direction">
+<span class="sig-name descname"><span class="pre">direction</span></span><a class="headerlink" href="#scripts.torch_pipeline.spec.PerturbationSpec.direction" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">inhibit</span></code> moves the gene’s token to the lowest rank;
+<code class="docutils literal notranslate"><span class="pre">delete</span></code> removes it; <code class="docutils literal notranslate"><span class="pre">overexpress</span></code> moves it to the front.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Literal[‘inhibit’, ‘delete’, ‘overexpress’]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.PerturbationSpec.apply_to">
+<span class="sig-name descname"><span class="pre">apply_to</span></span><a class="headerlink" href="#scripts.torch_pipeline.spec.PerturbationSpec.apply_to" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">query</span></code> perturbs only the query cell; <code class="docutils literal notranslate"><span class="pre">query_and_context</span></code>
+also perturbs every cell in the context.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Literal[‘query’, ‘query_and_context’]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id14">
+<span class="sig-name descname"><span class="pre">gene</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id14" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id15">
+<span class="sig-name descname"><span class="pre">gene_symbol</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id15" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id16">
+<span class="sig-name descname"><span class="pre">direction</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'inhibit'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'delete'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'overexpress'</span></span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'inhibit'</span></em><a class="headerlink" href="#id16" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id17">
+<span class="sig-name descname"><span class="pre">apply_to</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'query'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'query_and_context'</span></span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'query'</span></em><a class="headerlink" href="#id17" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.ExperimentSpec">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">scripts.torch_pipeline.spec.</span></span><span class="sig-name descname"><span class="pre">ExperimentSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data:</span> <span class="pre">~scripts.torch_pipeline.spec.DataSpec</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">context:</span> <span class="pre">~scripts.torch_pipeline.spec.ContextSpec</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">query:</span> <span class="pre">~scripts.torch_pipeline.spec.QuerySpec</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">perturbation:</span> <span class="pre">~scripts.torch_pipeline.spec.PerturbationSpec</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seq_length:</span> <span class="pre">int</span> <span class="pre">=</span> <span class="pre">16384</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/scripts/torch_pipeline/spec.html#ExperimentSpec"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#scripts.torch_pipeline.spec.ExperimentSpec" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Top-level spec for one zero-shot perturbation experiment.</p>
+<p>A spec is normally written as YAML (see <code class="docutils literal notranslate"><span class="pre">configs/</span></code> for examples) and
+loaded via <a class="reference internal" href="#scripts.torch_pipeline.spec.load_spec" title="scripts.torch_pipeline.spec.load_spec"><code class="xref py py-func docutils literal notranslate"><span class="pre">load_spec()</span></code></a>. It can also be constructed programmatically.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.ExperimentSpec.data">
+<span class="sig-name descname"><span class="pre">data</span></span><a class="headerlink" href="#scripts.torch_pipeline.spec.ExperimentSpec.data" title="Link to this definition"></a></dt>
+<dd><p>Input h5ad + obs-column mapping.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#scripts.torch_pipeline.spec.DataSpec" title="scripts.torch_pipeline.spec.DataSpec">scripts.torch_pipeline.spec.DataSpec</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.ExperimentSpec.context">
+<span class="sig-name descname"><span class="pre">context</span></span><a class="headerlink" href="#scripts.torch_pipeline.spec.ExperimentSpec.context" title="Link to this definition"></a></dt>
+<dd><p>How the trajectory of past cells is assembled per query.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#scripts.torch_pipeline.spec.ContextSpec" title="scripts.torch_pipeline.spec.ContextSpec">scripts.torch_pipeline.spec.ContextSpec</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.ExperimentSpec.query">
+<span class="sig-name descname"><span class="pre">query</span></span><a class="headerlink" href="#scripts.torch_pipeline.spec.ExperimentSpec.query" title="Link to this definition"></a></dt>
+<dd><p>Which cells are scored.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#scripts.torch_pipeline.spec.QuerySpec" title="scripts.torch_pipeline.spec.QuerySpec">scripts.torch_pipeline.spec.QuerySpec</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.ExperimentSpec.perturbation">
+<span class="sig-name descname"><span class="pre">perturbation</span></span><a class="headerlink" href="#scripts.torch_pipeline.spec.ExperimentSpec.perturbation" title="Link to this definition"></a></dt>
+<dd><p>Gene KO / inhibition / overexpression target.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#scripts.torch_pipeline.spec.PerturbationSpec" title="scripts.torch_pipeline.spec.PerturbationSpec">scripts.torch_pipeline.spec.PerturbationSpec</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.ExperimentSpec.seq_length">
+<span class="sig-name descname"><span class="pre">seq_length</span></span><a class="headerlink" href="#scripts.torch_pipeline.spec.ExperimentSpec.seq_length" title="Link to this definition"></a></dt>
+<dd><p>Model context length. Default <code class="docutils literal notranslate"><span class="pre">16384</span></code> for trajectory
+tasks; the per-cell rank-value cap is computed from this so the
+worst-case row fits.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)">int</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id18">
+<span class="sig-name descname"><span class="pre">data</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#scripts.torch_pipeline.spec.DataSpec" title="scripts.torch_pipeline.spec.DataSpec"><span class="pre">DataSpec</span></a></em><a class="headerlink" href="#id18" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id19">
+<span class="sig-name descname"><span class="pre">context</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#scripts.torch_pipeline.spec.ContextSpec" title="scripts.torch_pipeline.spec.ContextSpec"><span class="pre">ContextSpec</span></a></em><a class="headerlink" href="#id19" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id20">
+<span class="sig-name descname"><span class="pre">query</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#scripts.torch_pipeline.spec.QuerySpec" title="scripts.torch_pipeline.spec.QuerySpec"><span class="pre">QuerySpec</span></a></em><a class="headerlink" href="#id20" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id21">
+<span class="sig-name descname"><span class="pre">perturbation</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#scripts.torch_pipeline.spec.PerturbationSpec" title="scripts.torch_pipeline.spec.PerturbationSpec"><span class="pre">PerturbationSpec</span></a></em><a class="headerlink" href="#id21" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id22">
+<span class="sig-name descname"><span class="pre">seq_length</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">16384</span></em><a class="headerlink" href="#id22" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.ExperimentSpec.validate">
+<span class="sig-name descname"><span class="pre">validate</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../_modules/scripts/torch_pipeline/spec.html#ExperimentSpec.validate"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#scripts.torch_pipeline.spec.ExperimentSpec.validate" title="Link to this definition"></a></dt>
+<dd><p>Raise <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> if the spec is internally inconsistent.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.ExperimentSpec.to_dict">
+<span class="sig-name descname"><span class="pre">to_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../_modules/scripts/torch_pipeline/spec.html#ExperimentSpec.to_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#scripts.torch_pipeline.spec.ExperimentSpec.to_dict" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.load_spec">
+<span class="sig-prename descclassname"><span class="pre">scripts.torch_pipeline.spec.</span></span><span class="sig-name descname"><span class="pre">load_spec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#scripts.torch_pipeline.spec.ExperimentSpec" title="scripts.torch_pipeline.spec.ExperimentSpec"><span class="pre">ExperimentSpec</span></a></span></span><a class="reference internal" href="../_modules/scripts/torch_pipeline/spec.html#load_spec"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#scripts.torch_pipeline.spec.load_spec" title="Link to this definition"></a></dt>
+<dd><p>Load an <a class="reference internal" href="#scripts.torch_pipeline.spec.ExperimentSpec" title="scripts.torch_pipeline.spec.ExperimentSpec"><code class="xref py py-class docutils literal notranslate"><span class="pre">ExperimentSpec</span></code></a> from a YAML or JSON file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>path</strong> – Filesystem path. Suffix decides the parser (<code class="docutils literal notranslate"><span class="pre">.yaml</span></code> / <code class="docutils literal notranslate"><span class="pre">.yml</span></code>
+-&gt; PyYAML, anything else -&gt; <code class="docutils literal notranslate"><span class="pre">json</span></code>).</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A validated <a class="reference internal" href="#scripts.torch_pipeline.spec.ExperimentSpec" title="scripts.torch_pipeline.spec.ExperimentSpec"><code class="xref py py-class docutils literal notranslate"><span class="pre">ExperimentSpec</span></code></a>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the spec fails validation.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="scripts.torch_pipeline.spec.spec_from_dict">
+<span class="sig-prename descclassname"><span class="pre">scripts.torch_pipeline.spec.</span></span><span class="sig-name descname"><span class="pre">spec_from_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raw</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#scripts.torch_pipeline.spec.ExperimentSpec" title="scripts.torch_pipeline.spec.ExperimentSpec"><span class="pre">ExperimentSpec</span></a></span></span><a class="reference internal" href="../_modules/scripts/torch_pipeline/spec.html#spec_from_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#scripts.torch_pipeline.spec.spec_from_dict" title="Link to this definition"></a></dt>
+<dd><p>Build an <a class="reference internal" href="#scripts.torch_pipeline.spec.ExperimentSpec" title="scripts.torch_pipeline.spec.ExperimentSpec"><code class="xref py py-class docutils literal notranslate"><span class="pre">ExperimentSpec</span></code></a> from a nested dict (typically parsed YAML).</p>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../delta_recipes.html" class="btn btn-neutral float-left" title="Running on Delta" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="tokenizer.html" class="btn btn-neutral float-right" title="scripts.torch_pipeline.tokenizer" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Srijit Iyer.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
