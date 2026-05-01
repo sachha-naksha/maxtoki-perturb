@@ -11,7 +11,7 @@
 # Pseudotime_typeI / Pseudotime_typeII are also present in the file but the
 # user said one cell type, so we use the unified 'Pseudotime' column.
 data:
-  h5ad: ./data/rna_adata.preprocessed.h5ad
+  h5ad: ./data/rna_zero_shot.preprocessed.h5ad
   pseudotime_col: Pseudotime
   group_col: sample              # metadata to group outputs by
   cell_id_col: null              # null -> obs_names (cell barcodes)

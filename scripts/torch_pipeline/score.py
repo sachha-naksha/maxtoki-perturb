@@ -33,37 +33,63 @@ def _load_rank_files(predictions_dir: Path) -> dict[int, dict]:
         raise FileNotFoundError(f"no predictions__rank_*.pt under {predictions_dir}")
     out = {}
     for f in files:
-        # parse rank from filename: predictions__rank_<R>.pt or .._batch_<B>.pt
         stem = f.stem
         try:
             rank = int(stem.split("rank_")[1].split("__")[0])
         except (IndexError, ValueError):
             continue
-        out[rank] = torch.load(f, map_location="cpu", weights_only=False)
+        try:
+            out[rank] = torch.load(f, map_location="cpu", weights_only=False)
+        except Exception as e:
+            print(f"[score] skipping {f.name}: load error: {e}")
     return out
 
 
 def _flatten_regression(pred_dict: dict) -> np.ndarray:
-    """Return a 1D numpy array of regression predictions, in original row
-    order. Handles both per-batch list-of-dicts and the epoch-aggregated dict
-    that PredictionWriter produces."""
+    if pred_dict is None:
+        return np.array([])
     if "regression_preds" not in pred_dict:
-        # epoch-mode wraps a list of per-batch dicts under "predictions"
         if "predictions" in pred_dict and isinstance(pred_dict["predictions"], list):
             arrs = [_flatten_regression(p) for p in pred_dict["predictions"]]
             return np.concatenate(arrs) if arrs else np.array([])
-        raise KeyError(f"no 'regression_preds' in dict (keys={list(pred_dict)})")
+        return np.array([])
     pred = pred_dict["regression_preds"]
+    if pred is None:
+        return np.array([])
     if isinstance(pred, torch.Tensor):
         pred = pred.detach().float().cpu().numpy()
     return np.asarray(pred).reshape(-1)
 
 
-def load_predictions(predictions_dir: str | Path) -> np.ndarray:
-    """Load all ranks and return concatenated regression preds in row order."""
+def sink_predictions(
+    predictions_dir: str | Path,
+    expected_n: int | None = None,
+) -> np.ndarray:
+    """Gather predictions from all ranks into a single 1-D array in row order.
+
+    Layout:
+      - tp-only / pp-only (dp_size==1): only rank 0 has non-empty preds; rank>0
+        files are MP partial stubs. We drop empty arrays silently.
+      - dp>1: each rank holds contiguous rows. Concatenating in numeric order
+        recovers original sequence (Lightning's DistributedSampler shuffle=False).
+    """
     rank_to_dict = _load_rank_files(Path(predictions_dir))
-    parts = [_flatten_regression(rank_to_dict[r]) for r in sorted(rank_to_dict)]
-    return np.concatenate(parts) if parts else np.array([])
+    parts: list[np.ndarray] = []
+    for r in sorted(rank_to_dict):
+        arr = _flatten_regression(rank_to_dict[r])
+        if arr.size == 0:
+            continue
+        parts.append(arr)
+    out = np.concatenate(parts) if parts else np.array([])
+    if expected_n is not None and out.size != expected_n:
+        print(f"[sink] WARNING: gathered {out.size} predictions, expected {expected_n}; "
+              f"per-rank sizes={[p.size for p in parts]}")
+    return out
+
+
+def load_predictions(predictions_dir: str | Path) -> np.ndarray:
+    """Backwards-compatible alias for sink_predictions."""
+    return sink_predictions(predictions_dir)
 
 
 @dataclass
@@ -102,10 +128,11 @@ def score(
     perturbed_dir: str | Path,
     paired_metadata: Optional[dict] = None,
     out_path: Optional[str | Path] = None,
+    expected_n: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, ScoreSummary]:
     """Read both prediction dirs, compute per-cell MSE, return arrays + summary."""
-    base = load_predictions(baseline_dir)
-    pert = load_predictions(perturbed_dir)
+    base = load_predictions(baseline_dir, expected_n=expected_n)
+    pert = load_predictions(perturbed_dir, expected_n=expected_n)
     if base.shape != pert.shape:
         raise ValueError(
             f"baseline / perturbed prediction count mismatch: "

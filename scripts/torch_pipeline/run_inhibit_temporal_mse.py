@@ -305,6 +305,7 @@ def main() -> None:
         perturbed_dir=pert_pred_dir,
         paired_metadata=paired_metadata,
         out_path=out_dir / "scores.npz",
+        expected_n=len(base_ds), # used to check multi-rank preds
     )
 
     summary_dict = {
