@@ -111,7 +111,7 @@ def _maybe_init_wandb(args, spec: ExperimentSpec, ensembl: str, gene_token: int,
 
 
 def _wandb_finalize(wandb_run, summary_dict, delta, gene_present, base_ds_dir, out_dir, ensembl, direction, variant):
-    if wandb_run is None:
+    if wandb_run is None or not _is_main_rank():
         return
     import wandb
     wandb_run.summary.update(summary_dict)
@@ -178,20 +178,15 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--spec", required=True, help="YAML or JSON ExperimentSpec")
     p.add_argument("--ckpt-dir", help="BioNeMo distcp checkpoint dir (required unless --prep-only)")
-    p.add_argument(
-        "--tokenizer-path",
-        required=True,
-        help="Path to FULL token_dictionary_v1.json (with <boq>/<eoq>/numeric tokens)",
-    )
+    p.add_argument("--tokenizer-path", required=True,
+                   help="Path to FULL token_dictionary.json (with <boq>/<eoq>/numeric tokens)")
     p.add_argument("--variant", choices=["217m", "1b"], default="1b")
     p.add_argument("--out-dir", required=True)
-    # CLI override knobs (optional; spec wins otherwise)
     p.add_argument("--h5ad")
     p.add_argument("--gene")
     p.add_argument("--gene-symbol")
     p.add_argument("--direction", choices=["inhibit", "delete", "overexpress"])
     p.add_argument("--seq-length", type=int)
-    # Predict knobs
     p.add_argument("--micro-batch-size", type=int, default=None)
     p.add_argument("--devices", type=int, default=1)
     p.add_argument("--tensor-parallel-size", type=int, default=1)
@@ -200,22 +195,22 @@ def main() -> None:
     p.add_argument("--precision", default="bf16-mixed")
     p.add_argument("--prep-only", action="store_true")
     p.add_argument("--score-only", action="store_true")
-    # W&B knobs
-    p.add_argument("--wandb-project", default=None,
-                   help="W&B project name; presence of this flag enables logging")
+    p.add_argument("--cell-type-label", default="skeletal muscle")
+    p.add_argument("--wandb-project", default=None)
     p.add_argument("--wandb-entity", default=None)
-    p.add_argument("--wandb-name", default=None,
-                   help="run name; defaults to {gene}_{direction}_{variant}")
+    p.add_argument("--wandb-name", default=None)
     p.add_argument("--wandb-tags", nargs="*", default=None)
-    p.add_argument("--wandb-mode", default=None,
-                   choices=["online", "offline", "disabled"])
+    p.add_argument("--wandb-mode", default=None, choices=["online", "offline", "disabled"])
     args = p.parse_args()
+
+    main_rank = _is_main_rank()  # NEW: gate everything that touches files / wandb
 
     spec = load_spec(args.spec)
     spec = _apply_cli_overrides(spec, args)
 
     out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    if main_rank:
+        out_dir.mkdir(parents=True, exist_ok=True)
     base_ds_dir = out_dir / "baseline.dataset"
     pert_ds_dir = out_dir / "perturbed.dataset"
     base_pred_dir = out_dir / "baseline_predictions"
@@ -224,22 +219,20 @@ def main() -> None:
     os.environ["MAXTOKI_TOKEN_DICT"] = str(args.tokenizer_path)
     tokenizer = CellTokenizer()
     if not tokenizer.has_temporal_tokens:
-        sys.exit(
-            "Tokenizer dict has no <boq>/<eoq>/numeric tokens. Pass the full "
-            "BioNeMo token_dictionary via --tokenizer-path."
-        )
+        sys.exit("Tokenizer dict has no <boq>/<eoq>/numeric tokens. Pass the full BioNeMo token_dictionary via --tokenizer-path.")
 
     ensembl, gene_token = _resolve_gene_for_spec(spec, tokenizer)
-    print(f"[info] gene={ensembl} token={gene_token} direction={spec.perturbation.direction} "
-          f"context.strategy={spec.context.strategy} query.strategy={spec.query.strategy} "
-          f"seq_length={spec.seq_length}")
+    if main_rank:
+        print(f"[info] gene={ensembl} token={gene_token} direction={spec.perturbation.direction} "
+              f"context.strategy={spec.context.strategy} query.strategy={spec.query.strategy} "
+              f"seq_length={spec.seq_length}")
+        with open(out_dir / "spec.resolved.json", "w") as f:
+            json.dump({**spec.to_dict(), "gene_ensembl": ensembl, "gene_token": gene_token}, f, indent=2)
 
-    with open(out_dir / "spec.resolved.json", "w") as f:
-        json.dump({**spec.to_dict(), "gene_ensembl": ensembl, "gene_token": gene_token}, f, indent=2)
+    wandb_run = _maybe_init_wandb(args, spec, ensembl, gene_token, out_dir)  # rank-0 internally
 
-    wandb_run = _maybe_init_wandb(args, spec, ensembl, gene_token, out_dir)
-
-    if not args.score_only:
+    # === Stage 1: dataset prep (rank 0 only) ===
+    if main_rank and not args.score_only:
         print(f"[info] building paired datasets under {out_dir}")
         _, _, prep_summary = build_paired_dataset(
             spec=spec,
@@ -253,27 +246,34 @@ def main() -> None:
             json.dump(prep_summary, f, indent=2)
         print(f"[info] prep_summary={json.dumps(prep_summary, indent=2)}")
         if wandb_run is not None:
-            wandb_run.summary.update({f"prep/{k}": v for k, v in prep_summary.items()
-                                      if isinstance(v, (int, float, str, bool))})
+            wandb_run.summary.update(
+                {f"prep/{k}": v for k, v in prep_summary.items()
+                 if isinstance(v, (int, float, str, bool))}
+            )
 
     if args.prep_only:
-        print("[info] --prep-only set; stopping after dataset build.")
-        if wandb_run is not None:
-            wandb_run.finish()
+        if main_rank:
+            print("[info] --prep-only set; stopping after dataset build.")
+            if wandb_run is not None:
+                wandb_run.finish()
         return
 
     if not args.ckpt_dir:
         sys.exit("--ckpt-dir is required unless --prep-only is set.")
 
+    # === Stage 2: predict (ALL ranks - Lightning syncs internally) ===
     if not args.score_only:
-        # Lazy: only import bionemo when we actually need it
-        from predict_runner import run_headless_predict
+        try:
+            from .predict_runner import run_headless_predict
+        except ImportError:
+            from predict_runner import run_headless_predict
 
         for label, ds_dir, pred_dir in [
             ("baseline", base_ds_dir, base_pred_dir),
             ("perturbed", pert_ds_dir, pert_pred_dir),
         ]:
-            print(f"[info] running BioNeMo predict on {label} dataset")
+            if main_rank:
+                print(f"[info] running BioNeMo predict on {label} dataset")
             run_headless_predict(
                 ckpt_dir=args.ckpt_dir,
                 tokenizer_path=args.tokenizer_path,
@@ -288,6 +288,10 @@ def main() -> None:
                 context_parallel_size=args.context_parallel_size,
                 precision=args.precision,
             )
+
+    # === Stage 3: score + viz + wandb finalize (rank 0 only) ===
+    if not main_rank:
+        return  # ranks 1..N exit cleanly here; nothing more to do
 
     print("[info] scoring")
     import datasets
@@ -305,7 +309,7 @@ def main() -> None:
         perturbed_dir=pert_pred_dir,
         paired_metadata=paired_metadata,
         out_path=out_dir / "scores.npz",
-        expected_n=len(base_ds), # used to check multi-rank preds
+        expected_n=len(base_ds),
     )
 
     summary_dict = {
@@ -333,6 +337,18 @@ def main() -> None:
         wandb_run, summary_dict, delta, gene_present, base_ds_dir, out_dir,
         ensembl, spec.perturbation.direction, args.variant,
     )
+
+    # Paper-style viz - same rank-0 guard via the early return above
+    try:
+        try:
+            from .viz import run_viz
+        except ImportError:
+            from viz import run_viz
+        viz_stats = run_viz(out_dir, wandb_run=wandb_run, cell_type_label=args.cell_type_label)
+        print("=== viz stats ===")
+        print(json.dumps({k: v for k, v in viz_stats.items() if not isinstance(v, dict)}, indent=2))
+    except Exception as e:
+        print(f"[warn] viz step skipped: {e}")
 
 
 if __name__ == "__main__":
