@@ -138,8 +138,7 @@ def _wandb_finalize(wandb_run, summary_dict, delta, gene_present, base_ds_dir, o
         })
     except Exception as e:
         print(f"[warn] wandb scatter / table skipped: {e}")
-    # Artifact bundle
-    art = wandb.Artifact(
+        art = wandb.Artifact(
         f"scores_{ensembl}_{direction}_{variant}",
         type="perturbation_scores",
     )
@@ -148,6 +147,30 @@ def _wandb_finalize(wandb_run, summary_dict, delta, gene_present, base_ds_dir, o
         if fpath.exists():
             art.add_file(str(fpath))
     wandb_run.log_artifact(art)
+
+    # Notebook + scripts snapshot so wandb Reports can pin to the exact
+    # pipeline version that produced this run + the curated analysis notebook
+    # is one click away in the run's "Files / Artifacts" panel.
+    try:
+        repo_root = Path(__file__).resolve().parents[2]
+        notebook_path = repo_root / "notebooks" / "inhibition_analysis.py"
+        if notebook_path.exists():
+            nb_art = wandb.Artifact(
+                f"analysis_notebook_{ensembl}_{direction}_{variant}",
+                type="notebook",
+                description="Jupytext analysis notebook for offline / report-building",
+            )
+            nb_art.add_file(str(notebook_path), name="inhibition_analysis.py")
+            wandb_run.log_artifact(nb_art)
+        scripts_dir = repo_root / "scripts" / "torch_pipeline"
+        if scripts_dir.exists():
+            # include_fn signature varies across wandb versions (1- or 2-arg)
+            def _include(p, *_):
+                return str(p).endswith((".py", ".yaml", ".yml"))
+            wandb_run.log_code(root=str(scripts_dir), include_fn=_include)
+    except Exception as e:
+        print(f"[warn] wandb notebook / code snapshot skipped: {e}")
+
     wandb_run.finish()
 
 
