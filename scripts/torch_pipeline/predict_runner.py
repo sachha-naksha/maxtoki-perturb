@@ -71,6 +71,61 @@ def _patch_bionemo_for_multigpu_predict() -> None:
     _bncb.PredictionWriter._multigpu_check_patched = True
 
 
+
+def _patch_vocab_padding_for_tp(tp_size: int) -> None:
+    """Pad vocab to a multiple of TP so ``VocabParallelEmbedding`` accepts it.
+
+    MaxToki's vocab is 23277 = 3 x 7759 (prime), only divisible by
+    {1, 3, 7759, 23277}. With TP=2 / TP=4 / TP=8 the embedding-shard math
+    fails::
+
+        AssertionError: 23277 is not divisible by 4
+
+    Megatron supports auto-padding via ``make_vocab_size_divisible_by``, which
+    rounds the vocab dim up to the next multiple. We force it to 128 (Megatron
+    default) - that pads vocab to 23296, divisible by every power of 2 up to
+    128. The 19 padding slots are never accessed because no real token has
+    those IDs; their embedding rows stay at default init and contribute
+    nothing to outputs.
+
+    We also append ``make_vocab_size_divisible_by`` to ``override_parent_fields``
+    so the value isn't reset by ``load_settings_from_checkpoint`` (which
+    otherwise restores the checkpoint-time value of ``True``).
+
+    Idempotent.
+    """
+    if tp_size <= 1:
+        return
+    try:
+        import bionemo.maxtoki.predict as _bp
+        from bionemo.maxtoki.model import MaxTokiMultitaskFineTuneConfig
+        from dataclasses import dataclass
+    except ImportError:
+        return
+    if getattr(_bp, "_vocab_padding_patched", False):
+        return
+
+    @dataclass
+    class _TPSafeMaxTokiConfig(MaxTokiMultitaskFineTuneConfig):  # type: ignore[misc, valid-type]
+        make_vocab_size_divisible_by: int = 128
+
+        def __post_init__(self):
+            parent_post = getattr(super(), "__post_init__", None)
+            if callable(parent_post):
+                parent_post()
+            if getattr(self, "override_parent_fields", None) is not None:
+                if "make_vocab_size_divisible_by" not in self.override_parent_fields:
+                    self.override_parent_fields = (
+                        list(self.override_parent_fields)
+                        + ["make_vocab_size_divisible_by"]
+                    )
+
+    _bp.MaxTokiMultitaskFineTuneConfig = _TPSafeMaxTokiConfig
+    _bp._vocab_padding_patched = True
+    print(f"[predict_runner] vocab padding patched "
+          f"(make_vocab_size_divisible_by=128 for TP={tp_size})")
+
+
 def run_headless_predict(
     ckpt_dir: str | Path,
     tokenizer_path: str | Path,
@@ -103,6 +158,8 @@ def run_headless_predict(
         print(f"[predict_runner] multi-GPU patch applied "
               f"(devices={devices}, tp={tensor_parallel_size}, "
               f"pp={pipeline_model_parallel_size}, cp={context_parallel_size})")
+    if tensor_parallel_size > 1:
+        _patch_vocab_padding_for_tp(tensor_parallel_size)
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
