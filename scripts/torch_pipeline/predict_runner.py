@@ -19,11 +19,6 @@ VARIANT_DEFAULTS = {
         "scale_factor": 8.0,        # passes through; 217m uses standard RoPE
         "micro_batch_size": 4,
     },
-    "1b":   {
-        "seq_length": 16384,
-        "scale_factor": 8.0,        # llama3-style scaling, default in upstream
-        "micro_batch_size": 1,      # 1B + 16k context is heavy; bump if you have headroom
-    },
 }
 
 
