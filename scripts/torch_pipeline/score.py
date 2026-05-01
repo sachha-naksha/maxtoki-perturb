@@ -87,9 +87,12 @@ def sink_predictions(
     return out
 
 
-def load_predictions(predictions_dir: str | Path) -> np.ndarray:
+def load_predictions(
+    predictions_dir: str | Path,
+    expected_n: int | None = None,
+) -> np.ndarray:
     """Backwards-compatible alias for sink_predictions."""
-    return sink_predictions(predictions_dir)
+    return sink_predictions(predictions_dir, expected_n=expected_n)
 
 
 @dataclass

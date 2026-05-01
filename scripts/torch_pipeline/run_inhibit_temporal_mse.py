@@ -81,7 +81,21 @@ def _apply_cli_overrides(spec: ExperimentSpec, args) -> ExperimentSpec:
     spec.validate()
     return spec
 
+def _is_main_rank() -> bool:
+    """Return True only on global rank 0.
 
+    Under Lightning's subprocess launcher (which runs once per GPU), every
+    rank executes the same Python script. Without this guard, all ranks try
+    to ``wandb.init`` simultaneously and race on the IPC socket. We pick rank
+    0 from the standard distributed env vars; outside a distributed context
+    these are unset and we default to True.
+    """
+    for var in ("RANK", "LOCAL_RANK", "SLURM_PROCID", "PMI_RANK"):
+        v = os.environ.get(var)
+        if v is not None:
+            return int(v) == 0
+    return True
+    
 def _maybe_init_wandb(args, spec: ExperimentSpec, ensembl: str, gene_token: int, out_dir: Path):
     """Returns the active wandb run, or None if logging is disabled."""
     if not args.wandb_project:
@@ -138,7 +152,8 @@ def _wandb_finalize(wandb_run, summary_dict, delta, gene_present, base_ds_dir, o
         })
     except Exception as e:
         print(f"[warn] wandb scatter / table skipped: {e}")
-        art = wandb.Artifact(
+
+    art = wandb.Artifact(
         f"scores_{ensembl}_{direction}_{variant}",
         type="perturbation_scores",
     )
@@ -333,12 +348,9 @@ def main() -> None:
     print("=== summary ===")
     print(json.dumps(summary_dict, indent=2))
 
-    _wandb_finalize(
-        wandb_run, summary_dict, delta, gene_present, base_ds_dir, out_dir,
-        ensembl, spec.perturbation.direction, args.variant,
-    )
-
-    # Paper-style viz - same rank-0 guard via the early return above
+    # Paper-style viz - same rank-0 guard via the early return above.
+    # Must run BEFORE _wandb_finalize, which calls wandb_run.finish() -- once
+    # finished, run_viz's wandb.log calls are silently dropped.
     try:
         try:
             from .viz import run_viz
@@ -349,6 +361,11 @@ def main() -> None:
         print(json.dumps({k: v for k, v in viz_stats.items() if not isinstance(v, dict)}, indent=2))
     except Exception as e:
         print(f"[warn] viz step skipped: {e}")
+
+    _wandb_finalize(
+        wandb_run, summary_dict, delta, gene_present, base_ds_dir, out_dir,
+        ensembl, spec.perturbation.direction, args.variant,
+    )
 
 
 if __name__ == "__main__":
