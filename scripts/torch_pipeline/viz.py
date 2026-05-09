@@ -285,6 +285,205 @@ def plot_per_donor_delta(delta_t: np.ndarray, group: list[str], out_path: Path, 
     return {"pairwise_mannwhitney_p": pairwise}
 
 
+def plot_rejuvenation_effect(
+    baseline_t: np.ndarray,
+    perturbed_t: np.ndarray,
+    out_path: Path,
+    *,
+    pseudotime: Optional[np.ndarray] = None,
+    group: Optional[list[str]] = None,
+    gene_present: Optional[np.ndarray] = None,
+    bin_by: str = "donor",          # "donor" | "pseudotime" | "gene_present" | "single"
+    n_bins: int = 6,
+    gene_label: str = "",
+    units_label: str = "Δ predicted timestep (model units)",
+    power: float = 0.4,
+    figsize: tuple = (9.0, 5.5),
+    cmap_pro: str = "Reds",
+    cmap_rej: str = "Blues",
+    bar_height: float = 0.62,
+    title_fontsize: int = 13,
+    label_fontsize: int = 10,
+    show_value: bool = True,
+    show_n: bool = True,
+    sort_by: str = "value",         # "value" | "category"
+) -> dict:
+    """Divergent bar chart of perturbation effect, oriented by ageing direction.
+
+    Numbers come from the predicted-timestep arrays (the y-axis of the
+    pseudotime-correlation plot, fig3b). For each category the row's value is
+    mean(perturbed_t - baseline_t).
+
+    Sign convention matches the wet-lab interpretation:
+      - mean Δt < 0  →  perturbation predicts cells as *younger* → rejuvenating
+                        → bar extends LEFT, Blues colormap.
+      - mean Δt > 0  →  perturbation predicts cells as *older* → pro-ageing
+                        → bar extends RIGHT, Reds colormap.
+
+    Color *saturation* is power-normed (γ=power, default 0.4) per side, so
+    small-magnitude rows still read distinctly — same trick as plot_drivers.
+    """
+    import matplotlib.colors as mcolors
+    from matplotlib import cm
+
+    baseline_t = np.asarray(baseline_t).ravel().astype(float)
+    perturbed_t = np.asarray(perturbed_t).ravel().astype(float)
+    delta = perturbed_t - baseline_t
+
+    # ---------- build (label, mask) categories ----------
+    cats: list[tuple[str, np.ndarray]] = []
+    if bin_by == "single":
+        cats.append(("all cells", np.ones_like(delta, dtype=bool)))
+    elif bin_by == "donor":
+        if group is None:
+            raise ValueError("bin_by='donor' requires `group`")
+        g_arr = np.asarray(group)
+        for gv in sorted(set(g_arr)):
+            cats.append((str(gv), g_arr == gv))
+    elif bin_by == "gene_present":
+        if gene_present is None:
+            raise ValueError("bin_by='gene_present' requires `gene_present`")
+        gp = np.asarray(gene_present, dtype=bool)
+        cats.append(("gene present", gp))
+        cats.append(("gene absent", ~gp))
+    elif bin_by == "pseudotime":
+        if pseudotime is None:
+            raise ValueError("bin_by='pseudotime' requires `pseudotime`")
+        pt = np.asarray(pseudotime, dtype=float)
+        valid = ~np.isnan(pt)
+        edges = np.quantile(pt[valid], np.linspace(0, 1, n_bins + 1))
+        edges[0] -= 1e-9
+        for i in range(n_bins):
+            mask = valid & (pt > edges[i]) & (pt <= edges[i + 1])
+            cats.append((f"pt [{edges[i]:.2f}, {edges[i+1]:.2f}]", mask))
+    else:
+        raise ValueError(f"unknown bin_by={bin_by!r}")
+
+    # ---------- aggregate ----------
+    rows = []
+    for label, mask in cats:
+        d = delta[mask]
+        if d.size == 0:
+            continue
+        m = float(np.nanmean(d))
+        sem = float(np.nanstd(d, ddof=1) / np.sqrt(d.size)) if d.size > 1 else 0.0
+        rows.append({"label": label, "mean": m, "sem": sem, "n": int(d.size)})
+    if not rows:
+        raise ValueError("no non-empty categories")
+
+    if sort_by == "value":
+        rows.sort(key=lambda r: r["mean"])  # most negative (rejuvenating) at top
+    # else: keep insertion order (already category-sorted for donor/pseudotime)
+
+    means = np.array([r["mean"] for r in rows])
+    sems = np.array([r["sem"] for r in rows])
+    labels = [r["label"] for r in rows]
+    ns = [r["n"] for r in rows]
+    y = np.arange(len(rows))
+
+    # ---------- color: power-norm of |mean|, separate per side ----------
+    pos_mask = means > 0
+    neg_mask = means < 0
+    abs_pos = np.abs(means[pos_mask])
+    abs_neg = np.abs(means[neg_mask])
+    pos_norm = mcolors.PowerNorm(
+        gamma=power,
+        vmin=abs_pos.min() if abs_pos.size else 0.0,
+        vmax=abs_pos.max() if abs_pos.size else 1.0,
+    )
+    neg_norm = mcolors.PowerNorm(
+        gamma=power,
+        vmin=abs_neg.min() if abs_neg.size else 0.0,
+        vmax=abs_neg.max() if abs_neg.size else 1.0,
+    )
+    cmap_p = cm.get_cmap(cmap_pro)
+    cmap_n = cm.get_cmap(cmap_rej)
+    colors = np.empty((len(rows), 4))
+    if pos_mask.any():
+        colors[pos_mask] = cmap_p(0.35 + 0.6 * pos_norm(abs_pos))
+    if neg_mask.any():
+        colors[neg_mask] = cmap_n(0.35 + 0.6 * neg_norm(abs_neg))
+    colors[means == 0] = (0.7, 0.7, 0.7, 1.0)
+
+    # ---------- draw ----------
+    fig, ax = plt.subplots(figsize=figsize)
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("#fafafa")
+
+    ax.barh(
+        y, means, height=bar_height, color=colors,
+        edgecolor="white", linewidth=0.5,
+        xerr=sems, error_kw=dict(ecolor="#444444", lw=0.8, capsize=2.5, alpha=0.7),
+    )
+
+    ax.axvline(0, color="#888888", lw=1.0, ls="--")
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels, fontsize=label_fontsize)
+    ax.invert_yaxis()
+    ax.set_xlabel(units_label, fontsize=label_fontsize)
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.spines["left"].set_color("#cccccc")
+    ax.spines["bottom"].set_color("#cccccc")
+    ax.tick_params(axis="both", colors="#555555")
+    ax.grid(False)
+
+    # symmetric x-limits so 0 sits in the middle; pad enough room for
+    # outside-the-bar value labels without colliding with the y-tick labels.
+    span = float(np.max(np.abs(means) + sems)) if len(means) else 1.0
+    span *= 1.45
+    ax.set_xlim(-span, span)
+
+    # Value/n annotations placed on the *zero-side* of each bar tip — i.e.
+    # always pointing back toward the 0-axis — so they never overlap with
+    # the y-tick labels at the outer edge of the plot.
+    if show_value or show_n:
+        offset = span * 0.012
+        for yi, (m, s, n) in enumerate(zip(means, sems, ns)):
+            txt_parts = []
+            if show_value:
+                txt_parts.append(f"{m:+.1f}" + (f" ± {s:.1f}" if s else ""))
+            if show_n:
+                txt_parts.append(f"n={n}")
+            txt = "  ".join(txt_parts)
+            if m >= 0:
+                # positive bar extends right; place label just left of 0
+                ax.text(-offset, yi, txt, va="center", ha="right",
+                        fontsize=label_fontsize - 1, color="#333333")
+            else:
+                # negative bar extends left; place label just right of 0
+                ax.text(offset, yi, txt, va="center", ha="left",
+                        fontsize=label_fontsize - 1, color="#333333")
+
+    # Side captions in axes-relative coords so they stay anchored to the
+    # top corners regardless of how many rows there are.
+    ax.text(
+        0.0, 1.04, "← REJUVENATING  (anti-ageing)",
+        transform=ax.transAxes, ha="left", va="bottom",
+        fontsize=label_fontsize, color=cmap_n(0.85), fontweight="semibold",
+    )
+    ax.text(
+        1.0, 1.04, "PRO-AGEING →",
+        transform=ax.transAxes, ha="right", va="bottom",
+        fontsize=label_fontsize, color=cmap_p(0.85), fontweight="semibold",
+    )
+
+    title = "Perturbation rejuvenation profile"
+    if gene_label:
+        title = f"{gene_label}: " + title
+    sub = f"split by {bin_by}" + (f" ({n_bins} quantile bins)" if bin_by == "pseudotime" else "")
+    ax.set_title(f"{title}\n{sub}", fontsize=title_fontsize, pad=28, fontweight="semibold")
+
+    plt.tight_layout()
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+
+    return {
+        "rows": rows,
+        "overall_mean_delta_t": float(np.nanmean(delta)),
+        "overall_n": int(delta.size),
+    }
+
+
 def run_viz(out_dir: Path, wandb_run=None, cell_type_label: str = "skeletal muscle") -> dict:
     """Master entrypoint. Reads ``out_dir/scores.npz`` + ``out_dir/baseline.dataset``,
     produces all plots, writes them under ``out_dir/viz/``, optionally logs to wandb.
@@ -337,9 +536,31 @@ def run_viz(out_dir: Path, wandb_run=None, cell_type_label: str = "skeletal musc
         gene_label=gene_label,
     )
 
+    rejuv_donor = plot_rejuvenation_effect(
+        scores["baseline"], scores["perturbed"],
+        viz_dir / "rejuvenation_by_donor.png",
+        group=meta["group"], bin_by="donor", gene_label=gene_label,
+    )
+    rejuv_pt = plot_rejuvenation_effect(
+        scores["baseline"], scores["perturbed"],
+        viz_dir / "rejuvenation_by_pseudotime.png",
+        pseudotime=meta["query_pseudotime"], bin_by="pseudotime", n_bins=6,
+        gene_label=gene_label,
+    )
+    rejuv_gp = plot_rejuvenation_effect(
+        scores["baseline"], scores["perturbed"],
+        viz_dir / "rejuvenation_by_gene_present.png",
+        gene_present=scores["gene_present"], bin_by="gene_present",
+        gene_label=gene_label,
+    )
+
     all_stats = {
         **corr_stats, **baseline_stats, **delta_stats,
         "pairwise_mannwhitney_p": donor_stats.get("pairwise_mannwhitney_p", {}),
+        "rejuvenation_by_donor": rejuv_donor["rows"],
+        "rejuvenation_by_pseudotime": rejuv_pt["rows"],
+        "rejuvenation_by_gene_present": rejuv_gp["rows"],
+        "overall_mean_delta_t": rejuv_donor["overall_mean_delta_t"],
         "gene": summary["gene_ensembl"],
         "direction": summary["direction"],
         "variant": variant,

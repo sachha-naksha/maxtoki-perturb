@@ -1,0 +1,34 @@
+# PDK4 inhibit; context = oldest 3 (highest-pseudotime) cells of the 34 y/o
+# trajectory. Query = each 80 y/o cell (OM6 + OM9). 8k context length variant
+# of pdk4_217m_inhibit_oldest3_seq16k.
+data:
+  h5ad: ./data/zero_shot/rna_zero_shot.preprocessed.h5ad
+  pseudotime_col: Pseudotime
+  group_col: sample
+  cell_id_col: null
+  count_col: nCount_RNA
+
+context:
+  strategy: pool
+  max_cells: 3
+  ordering: pseudotime
+  pool_filter:
+    age: [34]
+  pool_select:
+    n: 3
+    pick: last
+    sort_by: pseudotime
+    seed: 0
+
+query:
+  strategy: each_cell
+  filter_obs:
+    age: [80]
+
+perturbation:
+  gene_symbol: PDK4
+  gene: null
+  direction: inhibit
+  apply_to: query
+
+seq_length: 8192
