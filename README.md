@@ -8,9 +8,9 @@ The upstream release is CUDA-only and requires NVIDIA BioNeMo.
 
 ## Status
 
-- [.] 217M (float32), zero-shot perturbation prediction results with viz
-- [.] 217M (float32), rank re-ordered prediction using FIREFate CP
-- [.] 217M (float32), attention matrix augmentation for multi-modality using FIREFate dynamic TF activity
+- [Done] 217M (float32), zero-shot perturbation prediction results with viz
+- [Done] 217M (float32), rank re-ordered prediction 
+- [TO-DO] 217M (float32), attention matrix sparsity implementation for multi-modality using Peak-to-Gene mass transport
 
 ## Model details
 
