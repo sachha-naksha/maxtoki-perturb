@@ -47,6 +47,7 @@ python scripts/torch_pipeline/stage2_predict.py \
     --ckpt-dir       "$CKPT_DIR" \
     --tokenizer-path "$TOK" \
     --finetune-dir   "$FINETUNE_DIR" \
+    ${HEADS_FILE:+--heads-file $HEADS_FILE} \
     --out-dir        "$OUT_DIR" \
     --seq-length     4096 \
     --K              3 \

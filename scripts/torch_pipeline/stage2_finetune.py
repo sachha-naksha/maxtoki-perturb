@@ -137,6 +137,49 @@ def sample_trajectory_specs_within_sample_pseudotime(
     return specs
 
 
+def sample_trajectory_specs_mixed_context(
+    samples_str: np.ndarray,
+    pseudotime: np.ndarray,
+    K: int = 3,
+    n_traj: int | None = None,
+    seed: int = 0,
+) -> list[dict]:
+    """Every cell with valid pseudotime takes a turn as query. Context = K
+    cells drawn at random from the WHOLE dataset (any donor), excluding the
+    query itself. This is the "dataset-biased" training distribution: every
+    cell's per-cell sparsity bias is exercised as query AND as context, and
+    trajectories naturally span donors (matches the cross-donor shape the
+    inhibition eval uses).
+
+    time_lapse target: pt[query] - pt[ctx_last] where ctx_last = highest-pt
+    cell among the K (sorted at trajectory-assembly time). Cross-donor
+    pseudotime delta is noisy biology but consistent training signal —
+    the head learns "this query content sits at pt~X relative to whatever
+    context anchored it"."""
+    rng = np.random.default_rng(seed)
+    valid = np.where(~np.isnan(pseudotime))[0]
+    if len(valid) <= K:
+        return []
+    candidates = valid.copy()
+    if n_traj is not None and n_traj < len(candidates):
+        candidates = rng.choice(candidates, size=n_traj, replace=False)
+
+    specs = []
+    for q in candidates:
+        # K context cells, any donor, q excluded
+        pool = valid[valid != q]
+        ctx = rng.choice(pool, size=K, replace=False).astype(int).tolist()
+        # Sort context by pseudotime so ctx_last is the highest-pt one
+        ctx.sort(key=lambda c: pseudotime[c])
+        last_ctx_pt = float(pseudotime[ctx[-1]])
+        specs.append({
+            "query_idx":    int(q),
+            "context_idxs": ctx,
+            "time_lapse":   float(pseudotime[q] - last_ctx_pt),
+        })
+    return specs
+
+
 def sample_trajectory_specs_pool_evenly(
     ages_str: np.ndarray,
     pseudotime: np.ndarray,
@@ -839,9 +882,17 @@ def main():
     ap.add_argument("--lr-lm-head",   type=float, default=None,
                     help="LR for the LM head (output_layer.*). Defaults to --lr. "
                          "Pretrained — keep low (1e-5 to 1e-4).")
-    ap.add_argument("--lr-time-head", type=float, default=1e-3,
+    ap.add_argument("--lr-time-head", type=float, default=3e-4,
                     help="LR for the TimeBetweenHead. Randomly init'd from scratch "
-                         "— needs ~10-100x the LM head LR.")
+                         "— needs ~10-100x the LM head LR. Above ~5e-4 the head "
+                         "tends to overshoot in early steps; gradient clipping "
+                         "below mitigates but doesn't eliminate.")
+    ap.add_argument("--clip-grad-norm", type=float, default=1.0,
+                    help="Global gradient-norm clip applied AFTER main_grad flush. "
+                         "0 = no clipping.")
+    ap.add_argument("--warmup-steps", type=int, default=50,
+                    help="Linear LR warmup over the first N steps (per-group). "
+                         "0 = no warmup.")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--smoke", action="store_true",
                     help="Smoke: 5 steps, batch=1, n-traj=64, seq-length=4096.")
@@ -875,6 +926,24 @@ def main():
     ap.add_argument("--save-every", type=int, default=0,
                     help="Periodically save stage2_heads_step{N}.pt every N steps. "
                          "0 = only save at end.")
+
+    # ---- trajectory sampling strategy
+    ap.add_argument("--strategy",
+                    choices=["within_sample", "eval_pool", "mixed_context"],
+                    default="mixed_context",
+                    help="within_sample: every cell as query, K context cells from same donor. "
+                         "eval_pool: fixed K cells from --context-age sample as context, "
+                         "queries restricted to --query-age (mirrors eval YAML). "
+                         "mixed_context (DEFAULT): every cell as query, K context cells "
+                         "drawn at random from ANY donor — exposes the model to the "
+                         "cross-donor attention pattern it'll see at inference, while "
+                         "keeping every cell as a query so its per-cell sparsity bias "
+                         "is exercised. This is the right default for a dataset-biased "
+                         "finetune.")
+    ap.add_argument("--context-age", default="34",
+                    help="(eval_pool only) age of the K context cells.")
+    ap.add_argument("--query-age", default="80",
+                    help="(eval_pool only) age of the query cells.")
     args = ap.parse_args()
     if args.lr_lm_head is None:
         args.lr_lm_head = args.lr
@@ -931,16 +1000,54 @@ def main():
           f"min={np.nanmin(pseudotime):.2f} max={np.nanmax(pseudotime):.2f} "
           f"valid={int((~np.isnan(pseudotime)).sum())}/{len(pseudotime)}")
 
-    # ---- trajectory sampling: every cell as query, K earlier-pseudotime cells
-    # from the same sample as context. Mirrors the user's intent: "the
-    # finetuning looks at all the cells (YM2, OM6, OM9) and finetunes based
-    # on their peak-RNA sparsity attention bias for both NextCell and
-    # TimeBetween."
-    specs = sample_trajectory_specs_within_sample_pseudotime(
-        samples_str, pseudotime, K=args.k_context, n_traj=args.n_traj, seed=args.seed,
-    )
-    print(f"[stage2] sampled {len(specs)} trajectory specs "
-          f"(within-sample, K={args.k_context} earlier-pseudotime cells)")
+    # ---- trajectory sampling
+    ages_str = cells_df["age_categorical"].astype(str).values
+    if args.strategy == "within_sample":
+        specs = sample_trajectory_specs_within_sample_pseudotime(
+            samples_str, pseudotime, K=args.k_context, n_traj=args.n_traj, seed=args.seed,
+        )
+        print(f"[stage2] sampled {len(specs)} trajectory specs "
+              f"(within-sample, K={args.k_context} cells from same donor)")
+    elif args.strategy == "mixed_context":
+        specs = sample_trajectory_specs_mixed_context(
+            samples_str, pseudotime, K=args.k_context, n_traj=args.n_traj, seed=args.seed,
+        )
+        print(f"[stage2] sampled {len(specs)} trajectory specs "
+              f"(mixed-context: every cell as query, K={args.k_context} context "
+              f"cells from random donors)")
+    elif args.strategy == "eval_pool":
+        # Use sample identity for context (the YM2 donor) — matches the eval
+        # YAML which picks 3 evenly-spaced YM2 cells. We map age -> sample
+        # heuristically: the 34yo donor is YM2.
+        ctx_sample = "YM2" if args.context_age == "34" else None
+        if ctx_sample is None:
+            # fallback: pick the first sample whose cells all have the requested age
+            for s in np.unique(samples_str):
+                if (ages_str[samples_str == s] == args.context_age).all():
+                    ctx_sample = s; break
+        if ctx_sample is None:
+            raise ValueError(f"could not resolve sample for context_age={args.context_age}")
+        ctx_pool = np.where(samples_str == ctx_sample)[0]
+        ctx_pool = ctx_pool[~np.isnan(pseudotime[ctx_pool])]
+        order = np.argsort(pseudotime[ctx_pool], kind="stable")
+        ctx_sorted = ctx_pool[order]
+        positions = np.linspace(0, len(ctx_sorted) - 1, args.k_context).round().astype(int)
+        ctx_idxs = ctx_sorted[positions].astype(int).tolist()
+        last_ctx_pt = float(pseudotime[ctx_idxs[-1]])
+        q_mask = (ages_str == args.query_age) & ~np.isnan(pseudotime)
+        query_idxs = np.where(q_mask)[0]
+        if args.n_traj is not None and args.n_traj < len(query_idxs):
+            rng_q = np.random.default_rng(args.seed)
+            query_idxs = rng_q.choice(query_idxs, size=args.n_traj, replace=False)
+        specs = [
+            {"query_idx": int(q), "context_idxs": list(ctx_idxs),
+             "time_lapse": float(pseudotime[q] - last_ctx_pt)}
+            for q in query_idxs
+        ]
+        print(f"[stage2] sampled {len(specs)} trajectory specs "
+              f"(eval_pool: ctx={ctx_sample} x {args.k_context} cells "
+              f"@ pt={[round(float(pseudotime[c]), 1) for c in ctx_idxs]}, "
+              f"query=age {args.query_age})")
     if not specs:
         raise RuntimeError("no trajectories sampled — check --k-context vs sample sizes")
     by_sample: dict[str, int] = {}
@@ -1006,8 +1113,9 @@ def main():
         param_groups.append({"params": list(time_head.parameters()),
                              "lr": args.lr_time_head, "name": "time_head"})
     optim = torch.optim.AdamW(param_groups, betas=(0.9, 0.95), weight_decay=0.0)
+    base_lrs = [g["lr"] for g in optim.param_groups]
     print(f"[stage2] optimizer LRs: " +
-          ", ".join(f"{g['name']}={g['lr']}" for g in param_groups))
+          ", ".join(f"{g['name']}={g['lr']}" for g in optim.param_groups))
 
     # ---- training loop
     model.train()
@@ -1069,7 +1177,7 @@ def main():
             h_eoq = h_bsh[torch.arange(B, device=h_bsh.device), eoq_pos]  # (B, H)
             # Mean-pool over query gene tokens. gene_loss_mask is 1 exactly on
             # [query_start:query_end], so we get a clean per-row pooling weight.
-            qmask = gene_loss_mask.to(h_bsh.dtype)        # (B, S)
+            qmask = gene_mask.to(h_bsh.dtype)             # (B, S)
             denom = qmask.sum(dim=1, keepdim=True).clamp_min(1.0)
             h_qpool = (h_bsh * qmask.unsqueeze(-1)).sum(dim=1) / denom  # (B, H)
             t_pred_z = time_head(h_eoq, h_qpool).float()  # (B,) z-scored
@@ -1081,17 +1189,29 @@ def main():
         loss.backward()
         flush_main_grad_to_grad(model)
 
-        # gnorm sanity -- compute *after* the main_grad flush but *before* zero_grad.
+        # Linear LR warmup per param group (lets time-head LR ramp from 0).
+        if args.warmup_steps > 0 and step < args.warmup_steps:
+            scale = (step + 1) / args.warmup_steps
+            for g, base in zip(optim.param_groups, base_lrs):
+                g["lr"] = base * scale
+
+        # Gradient clipping AFTER main_grad flush (so .grad has the real values).
+        if args.clip_grad_norm > 0:
+            clip_targets = [p for p in model.parameters() if p.requires_grad]
+            if time_head is not None:
+                clip_targets += list(time_head.parameters())
+            torch.nn.utils.clip_grad_norm_(clip_targets, max_norm=args.clip_grad_norm)
+
+        # gnorm AFTER clip: tells us when the clip is biting.
         gnorm_sq = 0.0
         for p in model.parameters():
             if p.grad is not None:
                 gnorm_sq += float(p.grad.detach().float().pow(2).sum())
-        head_gnorm_sq = 0.0
         if time_head is not None:
             for p in time_head.parameters():
                 if p.grad is not None:
-                    head_gnorm_sq += float(p.grad.detach().float().pow(2).sum())
-        gnorm = (gnorm_sq + head_gnorm_sq) ** 0.5
+                    gnorm_sq += float(p.grad.detach().float().pow(2).sum())
+        gnorm = gnorm_sq ** 0.5
 
         optim.step()
         optim.zero_grad(set_to_none=True)

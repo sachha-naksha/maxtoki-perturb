@@ -45,7 +45,10 @@ python scripts/torch_pipeline/stage2_finetune.py \
     --val-frac       0.15 \
     --val-every      100 \
     --val-max-rows   128 \
-    --save-every     500
+    --save-every     ${SAVE_EVERY:-200} \
+    --strategy       ${STRATEGY:-eval_pool} \
+    --context-age    34 \
+    --query-age      80
 INNER_EOF
 
 echo "==== finetune-skm v2 (steps=$MAX_STEPS batch=$BATCH seq=$SEQ) ====" | tee -a "$LOG"

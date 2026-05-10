@@ -379,6 +379,9 @@ def main():
                     default=Path("/projects/bhdw/asachan/models/MaxToki/MaxToki-217M-bionemo/context/token_dictionary.json"))
     ap.add_argument("--finetune-dir", type=Path, required=True,
                     help="Directory containing stage2_heads.pt produced by stage2_finetune.py")
+    ap.add_argument("--heads-file", type=str, default=None,
+                    help="Override the heads filename in --finetune-dir "
+                         "(e.g. stage2_heads_step1000.pt for the best-val checkpoint).")
     ap.add_argument("--out-dir", type=Path,
                     default=Path("/projects/bhdw/asachan/methods/maxtoki-perturb/out/finetune_skm_predict"))
     ap.add_argument("--seq-length", type=int, default=8192)
@@ -414,7 +417,7 @@ def main():
     print(f"[predict] params: trainable surface = {n_trainable/1e6:.2f}M (now restored from heads ckpt)")
 
     # ---- restore finetuned heads
-    heads_path = args.finetune_dir / "stage2_heads.pt"
+    heads_path = args.finetune_dir / (args.heads_file or "stage2_heads.pt")
     print(f"[predict] loading heads from {heads_path}")
     state = torch.load(heads_path, map_location="cpu", weights_only=False)
     T_MEAN = float(state["T_MEAN"])
@@ -585,6 +588,27 @@ def main():
             "delta_t_median":float(np.median(delta_t)),
             "n_negative":    int((delta_t < 0).sum()),
         }
+        # Per-donor breakdown — does the model give DIFFERENT answers for
+        # OM6 vs OM9? That's the personalization claim.
+        per_sample = {}
+        for s in sorted(set(samples_str[base["query_idx"]])):
+            mask = samples_str[base["query_idx"]] == s
+            if mask.sum() == 0:
+                continue
+            per_sample[s] = {
+                "n":             int(mask.sum()),
+                "t_baseline_mean": float(base["t_pred"][mask].mean()),
+                "t_baseline_std":  float(base["t_pred"][mask].std()),
+                "delta_t_mean":  float(delta_t[mask].mean()),
+                "delta_t_std":   float(delta_t[mask].std()),
+                "n_negative":    int((delta_t[mask] < 0).sum()),
+            }
+        summary["perturbation"]["per_sample"] = per_sample
+        print(f"[predict] per-donor delta_t breakdown:")
+        for s, d in per_sample.items():
+            print(f"           {s}: n={d['n']:>4d}  t_base={d['t_baseline_mean']:+.2f}±{d['t_baseline_std']:.2f}  "
+                  f"delta_t={d['delta_t_mean']:+.4f}±{d['delta_t_std']:.4f}  "
+                  f"n_neg={d['n_negative']}/{d['n']}")
     (args.out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
     print(f"[predict] wrote {args.out_dir / 'summary.json'}")
     print(f"[predict] DONE")
