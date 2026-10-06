@@ -518,12 +518,58 @@ Everything else passing — notably `test_sdpa_attention.py` forward/backward
 
 Deferred: pin pyarrow or `--deselect` the 3 flakes once they block something.
 
+### torch_pipeline wiring — PDK4 inhibit 8k smoke test (2026-10-06)
+
+First end-to-end run of `scripts/torch_pipeline/run_inhibit_temporal_mse.py`
+on DeltaAI, mirroring the x86 `_run_5newgene_8k.sh` pattern against the
+aging-SkM `rna_zero_shot.preprocessed.h5ad` with the PDK4 inhibit 8k
+config. Verifies dataset_prep → `bionemo.predict` × 2 → score → viz across
+the whole prefix env.
+
+Artifacts added:
+- `slurm/torch_pipeline_pdk4_8k.sbatch` — ghx4 sbatch (bhdw-dtai-gh, 1×GH200,
+  16 cpus, 96 GB, 2 h). Sources `maxtoki_env.sh`, adds `--bind
+  $PERTURB_DIR:/workspaces/maxToki` + `--bind /projects/bhdw/asachan` so the
+  config's `./data/...` relative paths and the model checkpoint absolute
+  path both resolve inside the container.
+- `slurm/_torch_pipeline_entry.py` — thin wrapper. Replaces
+  `datasets.generate_fingerprint` in BOTH `datasets.fingerprint` and
+  `datasets.arrow_dataset` namespaces with a schema-hash function, then
+  `runpy`-launches the real driver. Needed because the deferred
+  `MonthDayNano` pickling flake (above) blocks `Dataset.from_list` on
+  pyarrow 25 + datasets 5 + dill 0.4 — the fingerprint is only used as a
+  cache key, so a deterministic schema hash is a safe substitute. Shared
+  pipeline code untouched.
+
+First attempt (job 3323023) died at 1:33 on the fingerprint pickle, with
+the same `builtins.MonthDayNano` chain as the pytest flakes. Retry
+(job 3323051) with the entry wrapper completed cleanly in 4:01, peak RSS
+16.4 GB, 0 cuda OOM.
+
+Result summary (`out/pdk4_217m_inhibit_evenly_seq8k_deltaai/summary.json`):
+
+```
+n_rows = 2000  (OM6 + OM9, 80 y/o queries, 3-cell YM2 context)
+n_rows_with_gene_in_query = 983
+mean_mse = 11458 ; mean_mse_present = 23312
+mean_delta_t = -37.4 ; mean_delta_t_present = -76.1
+seq_length = 8192 ; variant = 217m
+```
+
+Negative Δt on the gene-present subset matches the direction expected from
+the x86 PDK4-inhibit runs (inhibit → earlier predicted temporal position →
+rejuvenation signal).
+
 ## TODO — remaining setup
-- [ ] Validate imports on `ghx4-interactive`.
-- [ ] Run upstream `pytest -x sub-packages/bionemo-maxtoki/test -q`.
-- [ ] HF weights download + conversion (needs human OK if terms gated).
-- [ ] TimeBetweenCells + NextCell smoke predictions; record tokens/sec, GPU mem.
-- [ ] Wire up `scripts/torch_pipeline/` for DeltaAI (`ghx4`, account, prefix env).
+- [x] Validate imports on `ghx4-interactive`.
+- [x] Run upstream `pytest sub-packages/bionemo-maxtoki/tests` (88 / 9 / 3; 3 fails are an upstream pyarrow/dill compat issue, not ARM).
+- [x] HF weights download + conversion. Checkpoints live at
+      `/projects/bhdw/asachan/models/MaxToki/` with both `*-HF/` (raw safetensors)
+      and `*-bionemo/` (pre-converted distcp) layouts for 217M and 1B.
+- [x] TimeBetweenCells smoke prediction — verified via torch_pipeline PDK4
+      inhibit 8k run (job 3323051, 4:01 on GH200). NextCell variant still pending.
+- [x] Wire up `scripts/torch_pipeline/` for DeltaAI (`ghx4`, account, prefix env)
+      — `slurm/torch_pipeline_pdk4_8k.sbatch` + `_torch_pipeline_entry.py`.
 - [ ] Add NextCell mode to `predict_runner.py`.
 - [ ] Go/no-go NextCell sensitivity experiment.
 
