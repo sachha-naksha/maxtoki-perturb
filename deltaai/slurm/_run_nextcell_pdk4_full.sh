@@ -7,7 +7,7 @@
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=18
 #SBATCH --mem=120G
-#SBATCH --time=02:00:00
+#SBATCH --time=03:00:00
 #SBATCH --output=logs/nc_pdk4_full.%j.out
 #SBATCH --error=logs/nc_pdk4_full.%j.out
 #
