@@ -61,6 +61,7 @@ apptainer exec --nv \
         --tokenizer-path $TOK_PATH \
         --variant 217m \
         --out-dir $OUT_DIR \
+        --micro-batch-size 1 \
         --devices 1 \
         --tensor-parallel-size 1 \
         --pipeline-parallel-size 1 \

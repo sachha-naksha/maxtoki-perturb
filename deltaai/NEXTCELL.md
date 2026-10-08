@@ -237,3 +237,10 @@ different k for Jaccard@k, compute set-overlap enrichment).
   itself is deterministic, but kernel-level numerics (reduction order, bf16 rounding)
   can shift the argmax on near-ties. If two reruns of the smoke disagree on any row,
   investigate — don't chase the discrepancy via sampling noise, it isn't.
+- **`buffer_overflow_factor` must be ~50, not 1.** Upstream's CLI default is 50.0.
+  The dormant brief suggested 1.0, which causes Megatron's `DynamicInferenceContext`
+  to refuse the 2nd request in a batch with `TokenOverflowError`, even when the
+  nominal buffer (`buffer_size_gb=20`) has orders of magnitude of room. The comment
+  in `bionemo.maxtoki.predict` says: "smaller values leave larger unused space in
+  the KV cache. 50.0 uses the max tokens allocated for the token limit check." Pin
+  50.0 as the default in `GenerationSpec`.

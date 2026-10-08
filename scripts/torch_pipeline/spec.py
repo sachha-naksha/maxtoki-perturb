@@ -178,7 +178,10 @@ class GenerationSpec:
     buffer_size_gb: float = 20.0
     buffer_guaranteed_fraction: float = 0.1
     chunk_size_tokens: int = 4096
-    buffer_overflow_factor: float = 1.0
+    # 50.0 = upstream `bionemo.maxtoki.predict` CLI default. Smaller values leave
+    # unused space in the KV buffer and trigger TokenOverflowError on multi-request
+    # batches that would otherwise fit. See deltaai/NEXTCELL.md §8.
+    buffer_overflow_factor: float = 50.0
 
 
 @dataclass

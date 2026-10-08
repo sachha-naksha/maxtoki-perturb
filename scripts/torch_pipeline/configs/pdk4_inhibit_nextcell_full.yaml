@@ -42,4 +42,4 @@ generation:
   buffer_size_gb: 20.0
   buffer_guaranteed_fraction: 0.1
   chunk_size_tokens: 4096
-  buffer_overflow_factor: 1.0
+  buffer_overflow_factor: 50.0   # upstream default; prevents TokenOverflowError on multi-request batches
