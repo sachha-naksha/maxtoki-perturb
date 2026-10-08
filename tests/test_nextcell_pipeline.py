@@ -93,7 +93,9 @@ def test_spec_default_task_is_time_between_cells_when_omitted():
     del raw["generation"]
     s = _spec.spec_from_dict(raw)
     assert s.task_type == "time_between_cells"
-    assert s.generation.max_tokens == 2048   # dataclass default; unused in TBC path
+    # Dataclass default follows NVIDIA documented command; value is unused on the
+    # TBC path but the spec still carries it so the full config is serializable.
+    assert s.generation.max_tokens == 4096
 
 
 def test_spec_validate_per_cell_cap_floor():
@@ -232,8 +234,10 @@ def test_build_input_ids_default_matches_time_between_cells():
 
 
 def test_build_input_ids_rejects_unknown_task():
+    """TBC builder refuses anything other than time_between_cells so bad
+    task_type values can't silently build a wrong-grammar row."""
     import dataset_prep as dp
-    with pytest.raises(ValueError, match="task_type"):
+    with pytest.raises(ValueError, match="time_between_cells"):
         dp._build_input_ids([[100, 1, 101]], [100, 7, 101], 102, 103, 42, 100, 101,
                             task_type="generate_something_else")
 
