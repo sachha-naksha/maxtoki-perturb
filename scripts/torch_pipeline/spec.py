@@ -171,11 +171,11 @@ class GenerationSpec:
     All fields map 1:1 to kwargs of ``bionemo.maxtoki.predict.predict`` when
     ``generate_next_cell=True``. Ignored under ``task_type="time_between_cells"``.
     """
-    max_tokens: int = 2048               # max NEW tokens per cell
+    max_tokens: int = 4096               # NVIDIA documented default
     top_k: int = 1                       # 1 = greedy; 0 = disabled
     top_p: float = 0.0
     temperature: float = 1.0
-    buffer_size_gb: float = 20.0
+    buffer_size_gb: float = 40.0            # NVIDIA documented default
     buffer_guaranteed_fraction: float = 0.1
     chunk_size_tokens: int = 4096
     # 50.0 = upstream `bionemo.maxtoki.predict` CLI default. Smaller values leave
@@ -251,15 +251,16 @@ class ExperimentSpec:
                 raise ValueError("generation.top_p must be in [0, 1].")
             if g.temperature <= 0:
                 raise ValueError("generation.temperature must be > 0.")
-            # Hard floor on the per-cell token budget. (seq_length - max_tokens - 1)
-            # must leave enough room for K+1 cells. Validates the §5.1 arithmetic.
-            k_plus_1 = max(1, c.max_cells) + 1
-            per_cell_cap = (self.seq_length - g.max_tokens - 1) // k_plus_1
+            # Per-cell cap under NVIDIA NextCell grammar:
+            # row = K cells + (K-1) Dt_inter + 3 (query block) + 1 (<bos> sentinel)
+            #       + max_tokens  <= seq_length
+            k = max(1, c.max_cells)
+            per_cell_cap = (self.seq_length - g.max_tokens - k - 3) // k
             if per_cell_cap < 512:
                 raise ValueError(
                     f"next_cell per-cell token cap would be {per_cell_cap} "
                     f"(seq_length={self.seq_length}, max_tokens={g.max_tokens}, "
-                    f"K+1={k_plus_1}). Raise seq_length or lower max_tokens / max_cells."
+                    f"K={k}). Raise seq_length or lower max_tokens / max_cells."
                 )
 
     def to_dict(self) -> dict:

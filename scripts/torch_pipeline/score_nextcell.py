@@ -56,23 +56,39 @@ def _load_rank_files(predictions_dir: Path) -> dict[int, dict]:
     return out
 
 
-def _iter_batches(pred: dict) -> list[dict]:
-    """Normalize the writer's nested structure into a flat list of per-batch dicts.
+def _iter_batches(pred: object) -> list[dict]:
+    """Normalize the writer's variable nesting into a flat list of per-batch dicts.
 
-    Writer may store either:
-      - {"predictions": [batch_dict, batch_dict, ...]}
-      - {"predictions": batch_dict}  (single-batch epoch)
-      - batch_dict  directly (older variants)
+    Observed shapes:
+      - {"predictions": [batch_dict, batch_dict, ...]}  (collated TBC path)
+      - {"predictions": batch_dict}
+      - batch_dict directly (older variants)
+      - [[batch_dict], [batch_dict], ...]                (NextCell path with
+         collate_batch=False — one microbatch per outer entry, each wrapped in a
+         singleton list by PredictionWriter)
+      - [batch_dict, batch_dict, ...]                    (ragged / flattened)
+
+    Recursively flattens nested lists / tuples until it hits dicts.
     """
-    if isinstance(pred, dict) and "predictions" in pred:
-        inner = pred["predictions"]
-    else:
-        inner = pred
-    if isinstance(inner, dict):
-        return [inner]
-    if isinstance(inner, list):
-        return [b for b in inner if isinstance(b, dict)]
-    raise TypeError(f"unrecognized predictions payload: {type(inner)}")
+    out: list[dict] = []
+
+    def _walk(node: object) -> None:
+        if isinstance(node, dict):
+            # "predictions"-wrapped envelope OR a batch dict itself.
+            if "predictions" in node and not any(k in node for k in
+                                                 ("generated_tokens", "regression_preds")):
+                _walk(node["predictions"])
+            else:
+                out.append(node)
+            return
+        if isinstance(node, (list, tuple)):
+            for x in node:
+                _walk(x)
+            return
+        raise TypeError(f"unrecognized predictions payload: {type(node)}")
+
+    _walk(pred)
+    return out
 
 
 def _as_tensor(x: Any) -> torch.Tensor | None:

@@ -38,11 +38,11 @@ seq_length: 16384
 task_type: next_cell
 
 generation:
-  max_tokens: 2048
-  top_k: 1
+  max_tokens: 4096               # NVIDIA documented default
+  top_k: 1                       # greedy for deterministic paired comparison
   top_p: 0.0
   temperature: 1.0
-  buffer_size_gb: 20.0
+  buffer_size_gb: 40.0           # NVIDIA documented default
   buffer_guaranteed_fraction: 0.1
   chunk_size_tokens: 4096
-  buffer_overflow_factor: 50.0   # upstream default; prevents TokenOverflowError on multi-request batches
+  buffer_overflow_factor: 50.0   # upstream default

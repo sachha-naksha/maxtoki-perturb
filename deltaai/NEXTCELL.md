@@ -38,27 +38,44 @@ predicted highest-expressed, the second is the next-highest, and so on. You can
 compare baseline-vs-perturbed as two ordered lists: which genes gained rank, which
 lost rank, which appeared, which disappeared.
 
-## 3. The prompt → generation flow for one query
+## 3. The prompt → generation flow for one target
 
-For each query cell `q`, `dataset_prep.build_paired_dataset` emits two rows (baseline
-and perturbed) sharing a `row_index` so the paired comparison is unambiguous. The
-NextCell row grammar in both:
+For each target future cell `t` (e.g. an OM 80y cell), `dataset_prep.build_paired_dataset`
+emits two rows (baseline and perturbed) sharing a `row_index`. The NextCell row grammar
+follows NVIDIA's `data_prep/dataset_utils.py::compose_example` exactly — **cells are
+interleaved with Δt tokens, and the query slot is a Δt scalar, not a cell**:
 
 ```
-[<bos>, ctx_1_genes, <eos>,
- <bos>, ctx_2_genes, <eos>,
+[<bos>, ctx_1_genes, <eos>, Δt_12,
+ <bos>, ctx_2_genes, <eos>, Δt_23,
  <bos>, ctx_3_genes, <eos>,
- <boq>, q_genes,     <eoq>,
- <bos>]                      <- sentinel for the multitask collator
+ <boq>, Δt_q, <eoq>,
+ <bos>]                             <- sentinel for the multitask collator
 ```
 
-The three context cells and the query carry the model's "trajectory sense" — young
-donor cells at pseudotime t_1 < t_2 < t_3, then an old-donor query. The trailing
-`<bos>` is a protocol detail: BioNeMo's `collate_batch_multitask` indexes
-`token_ids[eoq_index + 1]` to classify the row, so the prompt MUST have something
-after `<eoq>`. We put the training-grammar continuation (`<bos>`) there and tell the
-generator to truncate it off before the autoregressive loop (`using_pretrain_dataset=True`
-in `bionemo.maxtoki.predict.predict`).
+The three context cells and their inter-cell Δt tokens carry the model's "trajectory
+sense" (young-donor cells at pseudotime t_1 < t_2 < t_3). The query block
+`<boq> Δt_q <eoq>` tells the model: "project from the last context cell forward by
+Δt_q time units; emit the next cell's rank-value expression." The OM target cell
+itself is NOT fed into the prompt — only its pseudotime, used to compute
+`Δt_q = round(ptime(target) - ptime(ctx_K))`.
+
+The trailing `<bos>` is a protocol sentinel: BioNeMo's `collate_batch_multitask`
+indexes `token_ids[eoq_index + 1]` to classify the row (numeric → TBC, `<bos>` →
+NextCell). We satisfy that requirement with a sentinel and tell the generator to
+truncate it off before the autoregressive loop (`using_pretrain_dataset=True` in
+`bionemo.maxtoki.predict.predict`).
+
+**Perturbation site under NextCell.** The query (Δt_q) is a scalar — nothing to edit.
+We instead perturb the **last context cell** `ctx_K` when `apply_to=query`, or **every
+context cell** when `apply_to=query_and_context`. Baseline vs. perturbed differ ONLY
+in whether `ctx_K` carries the gene edit; Δt_12 / Δt_23 / Δt_q are byte-identical
+between the two rows.
+
+**Δt token encoding.** The BioNeMo full dictionary includes 3000 numeric tokens
+covering integers in `[-1500, 1499]` (sample from the pinned 217M dict). We discretize
+pseudotime differences with `round(…)` and clamp to that range before lookup via
+`dataset_prep._dt_token`. For aging-SKM pseudotime in `[0, 10]` the clamp is a no-op.
 
 The generator (`maxtoki_generate_predict_step` in `generate_utils.py`) then runs:
 
@@ -97,12 +114,13 @@ so Megatron never reallocates mid-generation. This is also why we reserve the ge
 budget in `_per_cell_max_len`:
 
 ```python
-rve_cap_next_cell = (seq_length - max_tokens_to_generate - 1) // (K + 1)
+rve_cap_next_cell = (seq_length - max_tokens_to_generate - K - 3 - 1) // K
 ```
 
-For the pinned run (`seq_length=16384`, `max_tokens_to_generate=2048`, `K=3`) that's
-**3583 tokens/cell**. Compare with the TBC cap of 4095 — NextCell runs with slightly
-truncated context cells to leave room for 2048 generated tokens.
+(K cells + K−1 inter-Δt + 3 query-block + 1 sentinel + 1 off-by-one safety.) For the
+pinned run (`seq_length=16384`, `max_tokens_to_generate=4096`, `K=3`) that's **4093
+tokens/cell** — nearly identical to the TBC cap of 4095 because the NextCell query
+block is only 3 tokens (vs. a full cell under TBC).
 
 ## 4. How it scales across all query cells
 
@@ -140,20 +158,19 @@ generations with a shared prompt prefix."
 
 ## 5. Baseline vs. perturbed: the paired structure
 
-Both runs use the same seed, same context, same decoding, same `row_index`. The only
-difference is one gene's token position inside the query block:
+Both runs use the same seed, same context cells, same decoding, same `row_index`, and
+the SAME `Δt_12`, `Δt_23`, `Δt_q`. Under NextCell the perturbation lives in `ctx_K`,
+not the query block (the query block is a Δt scalar — nothing to edit):
 
 ```
-row i baseline:  [... <boq>  q_i_genes_sorted_by_expression  <eoq> ...]
-                                       ↑
-                                       |
-                                  PDK4 at some rank in q_i
-                                       |
-                                       ▼ apply inhibit:
-row i perturbed: [... <boq>  <perturb(q_i)>                  <eoq> ...]
-                                       ↑
-                                       |
-                                  PDK4 moved to the lowest rank
+row i baseline:   [... <bos> ctx_K_genes <eos>  <boq> Δt_q <eoq>  <bos>]
+                            ^^^^^^^^^^^^^
+                            PDK4 at some rank
+                                     |
+                                     ▼ apply inhibit:
+row i perturbed:  [... <bos> perturb(ctx_K_genes) <eos>  <boq> Δt_q <eoq>  <bos>]
+                            ^^^^^^^^^^^^^^^^^^^^^
+                            PDK4 moved to lowest rank
 ```
 
 `perturbation.py` offers three edits:
@@ -162,7 +179,7 @@ row i perturbed: [... <boq>  <perturb(q_i)>                  <eoq> ...]
 - `overexpress`: move the gene token to the FIRST position (highest rank).
 
 Any difference between the baseline-generated list `A_i` and the perturbed-generated
-list `B_i` is the model's downstream response to that one-gene rank edit.
+list `B_i` is the model's downstream response to the gene-rank edit in `ctx_K`.
 
 The paired row-order invariant — `baseline[i].row_index == perturbed[i].row_index ==
 i` — is enforced by `build_paired_dataset` and double-checked by the scorer against
@@ -244,3 +261,12 @@ different k for Jaccard@k, compute set-overlap enrichment).
   in `bionemo.maxtoki.predict` says: "smaller values leave larger unused space in
   the KV cache. 50.0 uses the max tokens allocated for the token limit check." Pin
   50.0 as the default in `GenerationSpec`.
+- **Prompt grammar is NOT optional.** An earlier smoke (job 3343372) built rows as
+  `[c1, c2, c3, <boq>, query_cell_genes, <eoq>, <bos>]` — all cells adjacent, query
+  is a cell, no inter-cell `Δt`. Mechanics ran (grammar classifier passed), but the
+  model never emitted `<eos>` on any of 40 generations, baseline and perturbed were
+  near-identical, and top-ranked outputs were pseudogene-dominated. Root cause: the
+  pretraining data pipeline (`compose_example`) always interleaves cells with `Δt`
+  tokens and uses a `Δt` as the question slot in `predict_time_or_cell="cell"` mode.
+  Feeding the model something it has never seen during training produces
+  low-entropy default-mode garbage. Match the NVIDIA grammar exactly.

@@ -293,25 +293,58 @@ def _per_cell_max_len(seq_length: int, n_context: int, task_type: str = "time_be
                       max_tokens_to_generate: int = 0) -> int:
     """How many tokens (incl. BOS/EOS) each cell can use so the row fits in seq_length.
 
-    TimeBetweenCells row:
-        K ctx cells + query + <boq>/<eoq> + 1 dummy numeric <= seq_length
+    TimeBetweenCells (query is a cell):
+        K ctx cells (K*rve) + 1 <boq> + (rve - 2) query genes + 1 <eoq> + 1 dummy_numeric
+      = (K+1) * rve + 1  <=  seq_length
         rve = (seq_length - 1) // (K + 1)
 
-    NextCell row (prompt only; model generates up to max_tokens_to_generate NEW tokens
-    after <eoq>):
-        K ctx cells + query + <boq>/<eoq> + max_tokens_to_generate <= seq_length
-    DynamicInferenceContext sizes the KV cache as initial_seq_len + max_tokens_to_generate,
-    so we reserve the generation budget up front.
-        rve = (seq_length - max_tokens_to_generate - 1) // (K + 1)
-    (-1 kept symmetric with the TimeBetweenCells formula.)
+    NextCell (query is a scalar Delta_t; cells interleaved with Delta_t tokens):
+        row = [<bos> c1 <eos>] [Dt_12] [<bos> c2 <eos>] [Dt_23] [<bos> c3 <eos>]
+              [<boq> Dt_q <eoq>] [<bos> sentinel] [<= max_tokens_to_generate response]
+        Total prompt = K*rve + (K-1) + 3 + 1  (the K-1 inter-cell Dt tokens, 3 for
+        <boq>/<Dt_q>/<eoq>, 1 for trailing <bos> sentinel)
+        Must satisfy:  K*rve + (K-1) + 3 + 1 + max_tokens  <= seq_length
+        rve = (seq_length - max_tokens - K - 3) // K
     """
     k = max(1, n_context)
     if task_type == "next_cell":
-        budget = seq_length - max(0, max_tokens_to_generate) - 1
+        # Query block is 3 tokens (<boq>, Delta_q, <eoq>), not a cell. Only K cells
+        # share the budget, interleaved with (K-1) Delta_t tokens + 1 trailing
+        # <bos>. Reserve 1 extra token for generation off-by-one (observed in a
+        # prior smoke where cap=2048 produced 2049 tokens).
+        budget = seq_length - max(0, max_tokens_to_generate) - k - 3 - 1
+        rve = budget // k if k else 0
     else:
         budget = seq_length - 1
-    rve = budget // (k + 1)
+        rve = budget // (k + 1)
     return min(rve, MODEL_INPUT_SIZE)
+
+
+# ---------------------------------------------------------------------------
+# Delta-t token lookup
+# ---------------------------------------------------------------------------
+
+
+def _dt_token(dt: int, tokenizer: CellTokenizer) -> tuple[int, int]:
+    """Map a signed integer Delta_t to a numeric token id, clamping to the dict range.
+
+    Returns (clamped_dt_value, token_id). Raises if the dictionary has no numeric
+    tokens (should never happen for the BioNeMo full dict).
+    """
+    if not tokenizer.numeric_token_ids:
+        raise RuntimeError("tokenizer has no numeric tokens; cannot encode Delta_t.")
+    # numeric_token_ids: {token_id: numeric_value}
+    values = [v for v in tokenizer.numeric_token_ids.values()]
+    lo, hi = min(values), max(values)
+    dt_clamped = max(lo, min(hi, int(round(dt))))
+    key = str(dt_clamped)
+    if key in tokenizer.token_dict:
+        return dt_clamped, int(tokenizer.token_dict[key])
+    # Fallback: scan the inverse map
+    for tid, val in tokenizer.numeric_token_ids.items():
+        if int(val) == dt_clamped:
+            return dt_clamped, int(tid)
+    raise RuntimeError(f"Delta_t={dt_clamped} not found in numeric_token_ids")
 
 
 # ---------------------------------------------------------------------------
@@ -331,7 +364,7 @@ def _strip_bos_eos(toks: list[int], bos: int, eos: int) -> list[int]:
 
 def _build_input_ids(
     context_cells: list[list[int]],   # each is [<bos>, genes, <eos>]
-    query_cell: list[int],            # [<bos>, genes, <eos>]
+    query_cell: list[int],            # [<bos>, genes, <eos>]  (TBC only)
     boq_id: int,
     eoq_id: int,
     dummy_numeric: int,
@@ -339,23 +372,17 @@ def _build_input_ids(
     eos_id: int,
     task_type: str = "time_between_cells",
 ) -> list[int]:
-    """Assemble the model input row.
+    """TimeBetweenCells row only. For NextCell use :func:`_build_input_ids_next_cell`.
 
-    TimeBetweenCells (default):
-        [<bos>, ctx_1, <eos>, ..., <boq>, query_genes, <eoq>, dummy_numeric]
-    NextCell:
-        [<bos>, ctx_1, <eos>, ..., <boq>, query_genes, <eoq>, <bos>]
-
-    The trailing <bos> is required by BioNeMo's multitask collator -
-    ``MaxTokiTokenizer.determine_task_type`` reads ``token_ids[eoq_index + 1]``
-    and classifies by the token found there: numeric -> TimeBetweenCells,
-    <bos> -> NextCell. Without the <bos> sentinel the collator raises
-    ``IndexError`` during batching. The predict path then runs with
-    ``using_pretrain_dataset=True`` so ``maxtoki_generate_predict_step``
-    truncates each row at ``eoq_index + 1``, giving the model a prompt ending
-    at <eoq>; the model emits <bos>, g_1, ..., <eos> autoregressively,
-    matching the training grammar.
+    TBC grammar:
+        [<bos>, ctx_1, <eos>, ..., <bos>, ctx_K, <eos>, <boq>, query_genes, <eoq>,
+         dummy_numeric]
     """
+    if task_type != "time_between_cells":
+        raise ValueError(
+            f"_build_input_ids only handles time_between_cells; got {task_type}. "
+            f"Use _build_input_ids_next_cell."
+        )
     out: list[int] = []
     for ctx in context_cells:
         out.extend(ctx)
@@ -363,12 +390,48 @@ def _build_input_ids(
     out.append(boq_id)
     out.extend(query_genes)
     out.append(eoq_id)
-    if task_type == "time_between_cells":
-        out.append(dummy_numeric)
-    elif task_type == "next_cell":
-        out.append(bos_id)  # sentinel so determine_task_type classifies as NextCell
-    else:
-        raise ValueError(f"unknown task_type: {task_type}")
+    out.append(dummy_numeric)
+    return out
+
+
+def _build_input_ids_next_cell(
+    context_cells: list[list[int]],       # each is [<bos>, genes, <eos>]
+    inter_cell_dt_tokens: list[int],      # len == len(context_cells) - 1; one Delta_t
+                                          # token id per adjacent context pair
+    query_dt_token: int,                  # single Delta_t token id for the query
+    boq_id: int,
+    eoq_id: int,
+    bos_id: int,
+) -> list[int]:
+    """NextCell row following the NVIDIA ``compose_example`` grammar:
+
+        <bos> c1 <eos>  Dt_12  <bos> c2 <eos>  Dt_23  <bos> c3 <eos>
+        <boq> Dt_q <eoq>  <bos>
+
+    The trailing <bos> is a protocol sentinel so BioNeMo's collator's
+    ``determine_task_type`` can classify this as NextCell (it reads
+    ``token_ids[eoq_index + 1]``). The predict path runs with
+    ``using_pretrain_dataset=True`` so the generator truncates each row at
+    ``eoq_index + 1``; the model autoregressively emits ``<bos> g_1 ... <eos>``.
+
+    The ``inter_cell_dt_tokens`` carry pseudotime deltas between consecutive
+    context cells; ``query_dt_token`` carries the delta from the last context
+    cell to the target future cell.
+    """
+    k = len(context_cells)
+    if len(inter_cell_dt_tokens) != max(0, k - 1):
+        raise ValueError(
+            f"inter_cell_dt_tokens must have len K-1={k-1}, got {len(inter_cell_dt_tokens)}"
+        )
+    out: list[int] = []
+    for i, ctx in enumerate(context_cells):
+        out.extend(ctx)
+        if i < k - 1:
+            out.append(inter_cell_dt_tokens[i])
+    out.append(boq_id)
+    out.append(query_dt_token)
+    out.append(eoq_id)
+    out.append(bos_id)  # collator sentinel; truncated off before autoregression
     return out
 
 
@@ -443,6 +506,11 @@ def build_paired_dataset(
     task_type = spec.task_type
     gen_budget = spec.generation.max_tokens if task_type == "next_cell" else 0
 
+    # Delta-t stats collected for the prep summary (NextCell only).
+    dt_12_hist: list[int] = []
+    dt_23_hist: list[int] = []
+    dt_q_hist: list[int] = []
+
     for row_index, q in enumerate(queries):
         ctx_picks = _select_context(q, all_picks, spec.context, pool_cache=pool_cache)
         per_cell_cap = _per_cell_max_len(
@@ -459,22 +527,90 @@ def build_paired_dataset(
                 cache[key] = _tokenize_one_cell(adata, ensembl_ids, cp, tokenizer, per_cell_cap)
             ctx_tokens.append(cache[key])
 
-        q_key = (q.idx, per_cell_cap)
-        if q_key not in cache:
-            cache[q_key] = _tokenize_one_cell(adata, ensembl_ids, q, tokenizer, per_cell_cap)
-        query_tokens = cache[q_key]
+        if task_type == "time_between_cells":
+            q_key = (q.idx, per_cell_cap)
+            if q_key not in cache:
+                cache[q_key] = _tokenize_one_cell(adata, ensembl_ids, q, tokenizer, per_cell_cap)
+            query_tokens = cache[q_key]
 
-        ctx_tokens_pert = [
-            _maybe_perturb(t, apply_ctx, gene_token, direction, bos, eos) for t in ctx_tokens
-        ]
-        query_tokens_pert = perturb_tokens(query_tokens, gene_token, direction, bos, eos)
+            ctx_tokens_pert = [
+                _maybe_perturb(t, apply_ctx, gene_token, direction, bos, eos) for t in ctx_tokens
+            ]
+            query_tokens_pert = perturb_tokens(query_tokens, gene_token, direction, bos, eos)
 
-        base_input_ids = _build_input_ids(
-            ctx_tokens, query_tokens, boq, eoq, dummy_numeric, bos, eos, task_type=task_type,
-        )
-        pert_input_ids = _build_input_ids(
-            ctx_tokens_pert, query_tokens_pert, boq, eoq, dummy_numeric, bos, eos, task_type=task_type,
-        )
+            base_input_ids = _build_input_ids(
+                ctx_tokens, query_tokens, boq, eoq, dummy_numeric, bos, eos,
+                task_type=task_type,
+            )
+            pert_input_ids = _build_input_ids(
+                ctx_tokens_pert, query_tokens_pert, boq, eoq, dummy_numeric, bos, eos,
+                task_type=task_type,
+            )
+            gene_present_flag = gene_token in query_tokens
+            row_dt_meta: dict = {}
+
+        elif task_type == "next_cell":
+            # Query cell (OM) is the ground-truth target; we feed only its
+            # pseudotime via a Delta_t token. Perturbation targets the LAST
+            # context cell (ctx_K) under apply_to=query; apply_to=query_and_context
+            # perturbs every context cell.
+            import math as _math
+            ctx_pts = [c.pseudotime for c in ctx_picks]
+            if any(_math.isnan(p) for p in ctx_pts) or _math.isnan(q.pseudotime):
+                raise ValueError(
+                    f"row {row_index}: NaN pseudotime in context or query; "
+                    f"ensure data.pseudotime_col and the query pool are filtered."
+                )
+            inter_dts = [int(round(ctx_pts[i + 1] - ctx_pts[i]))
+                         for i in range(len(ctx_pts) - 1)]
+            query_dt = int(round(q.pseudotime - ctx_pts[-1]))
+
+            inter_tokens: list[int] = []
+            for dt in inter_dts:
+                _, tid = _dt_token(dt, tokenizer)
+                inter_tokens.append(tid)
+            query_dt_clamped, query_dt_tid = _dt_token(query_dt, tokenizer)
+
+            if len(ctx_picks) >= 2:
+                dt_12_hist.append(inter_dts[0])
+            if len(ctx_picks) >= 3:
+                dt_23_hist.append(inter_dts[1])
+            dt_q_hist.append(query_dt_clamped)
+
+            # Perturbation: ctx_K under apply_to=query; all context cells under
+            # apply_to=query_and_context. The OM query cell itself is never
+            # tokenized into the prompt (only its pseudotime is used).
+            if apply_ctx:
+                ctx_tokens_pert = [
+                    perturb_tokens(t, gene_token, direction, bos, eos) for t in ctx_tokens
+                ]
+                perturb_site = "all_context"
+            else:
+                ctx_tokens_pert = list(ctx_tokens)
+                ctx_tokens_pert[-1] = perturb_tokens(
+                    ctx_tokens[-1], gene_token, direction, bos, eos
+                )
+                perturb_site = "last_context"
+
+            base_input_ids = _build_input_ids_next_cell(
+                ctx_tokens, inter_tokens, query_dt_tid, boq, eoq, bos,
+            )
+            pert_input_ids = _build_input_ids_next_cell(
+                ctx_tokens_pert, inter_tokens, query_dt_tid, boq, eoq, bos,
+            )
+            # "gene_present" flag follows the perturbation site: present if the
+            # gene is in the (last) context cell that is being edited.
+            if apply_ctx:
+                gene_present_flag = any(gene_token in t for t in ctx_tokens)
+            else:
+                gene_present_flag = gene_token in ctx_tokens[-1]
+            row_dt_meta = {
+                "delta_t_inter": inter_dts,
+                "delta_t_query": query_dt_clamped,
+                "perturb_site": perturb_site,
+            }
+        else:
+            raise ValueError(f"unknown task_type: {task_type}")
 
         meta = {
             "row_index": row_index,
@@ -488,8 +624,9 @@ def build_paired_dataset(
             "gene_ensembl": gene_ensembl,
             "direction": direction,
             "apply_to": spec.perturbation.apply_to,
-            "gene_present_in_query": gene_token in query_tokens,
+            "gene_present_in_query": gene_present_flag,
             "task_type": task_type,
+            **row_dt_meta,
         }
         base_records.append({**meta, "input_ids": base_input_ids, "condition": "baseline"})
         pert_records.append({**meta, "input_ids": pert_input_ids, "condition": "perturbed"})
@@ -551,4 +688,15 @@ def build_paired_dataset(
         import dataclasses as _dc
         summary["generation"] = _dc.asdict(spec.generation)
         summary["max_tokens_to_generate"] = spec.generation.max_tokens
+        if dt_q_hist:
+            import statistics as _stat
+            def _stats(xs):
+                return {"n": len(xs), "min": min(xs), "max": max(xs),
+                        "mean": float(_stat.fmean(xs))}
+            summary["delta_t_stats"] = {
+                "inter_12": _stats(dt_12_hist) if dt_12_hist else None,
+                "inter_23": _stats(dt_23_hist) if dt_23_hist else None,
+                "query":    _stats(dt_q_hist),
+            }
+            print(f"[info] delta_t stats: {summary['delta_t_stats']}")
     return out_dir_baseline, out_dir_perturbed, summary

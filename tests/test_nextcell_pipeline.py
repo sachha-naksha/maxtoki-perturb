@@ -123,18 +123,19 @@ def test_per_cell_max_len_time_between_cells():
     import dataset_prep as dp
     # (16384 - 1) // 4 = 4095, capped by MODEL_INPUT_SIZE=4096 -> 4095
     assert dp._per_cell_max_len(16384, n_context=3) == 4095
-    # Explicit task_type parameter path matches the default.
     assert dp._per_cell_max_len(16384, 3, task_type="time_between_cells") == 4095
 
 
 def test_per_cell_max_len_next_cell_reserves_generation_budget():
     import dataset_prep as dp
-    # (16384 - 2048 - 1) // 4 = 3583
+    # NVIDIA grammar: K cells + (K-1) inter-Dt + 3 (query block) + 1 (sentinel)
+    #                 + 1 (off-by-one safety) + max_tokens <= seq_length
+    # (16384 - 4096 - 3 - 3 - 1) // 3 = 4093
     assert dp._per_cell_max_len(16384, 3, task_type="next_cell",
-                                max_tokens_to_generate=2048) == 3583
-    # No budget -> same as TBC - 1 budget deduction.
+                                max_tokens_to_generate=4096) == 4093
+    # Smaller gen budget leaves more per cell, capped by MODEL_INPUT_SIZE=4096.
     assert dp._per_cell_max_len(16384, 3, task_type="next_cell",
-                                max_tokens_to_generate=0) == 4095
+                                max_tokens_to_generate=2048) == 4096
 
 
 def test_build_input_ids_time_between_cells_ends_with_numeric():
@@ -150,36 +151,73 @@ def test_build_input_ids_time_between_cells_ends_with_numeric():
     assert out[-3] == 9  # last query gene (bos/eos stripped from query)
 
 
-def test_build_input_ids_next_cell_ends_with_bos_sentinel():
-    """NextCell rows end `[..., <eoq>, <bos>]`. The trailing <bos> is a
-    protocol-level sentinel so BioNeMo's ``collate_batch_multitask`` can
-    classify the row via ``determine_task_type`` (which indexes
-    ``token_ids[eoq_index + 1]``). The generator truncates it off before
-    autoregression. See deltaai/NEXTCELL.md §3 and §8."""
+def test_build_input_ids_rejects_next_cell_task_type():
+    """The TBC builder refuses next_cell; the caller must use the dedicated
+    builder with Delta_t interleaving."""
     import dataset_prep as dp
-    bos, eos, boq, eoq, dummy = 100, 101, 102, 103, 42
-    ctx = [[bos, 1, 2, 3, eos]]
-    q = [bos, 7, 8, 9, eos]
-    out = dp._build_input_ids(ctx, q, boq_id=boq, eoq_id=eoq,
-                              dummy_numeric=dummy, bos_id=bos, eos_id=eos,
-                              task_type="next_cell")
-    assert out[-1] == bos
-    assert out[-2] == eoq
-    assert dummy not in out
-    assert out == [bos, 1, 2, 3, eos, boq, 7, 8, 9, eoq, bos]
+    with pytest.raises(ValueError, match="next_cell"):
+        dp._build_input_ids([[100, 1, 101]], [100, 7, 101], 102, 103, 42, 100, 101,
+                            task_type="next_cell")
 
 
-def test_build_input_ids_next_cell_classifies_as_next_cell():
-    """Simulate BioNeMo's ``determine_task_type`` grammar check (==, not is)."""
+def test_build_input_ids_next_cell_grammar_nvidia():
+    """NextCell grammar matches NVIDIA ``compose_example``:
+
+        <bos> c1 <eos> Dt_12 <bos> c2 <eos> Dt_23 <bos> c3 <eos>
+        <boq> Dt_q <eoq>  <bos>(sentinel)
+    """
     import dataset_prep as dp
-    bos, eos, boq, eoq, dummy = 100, 101, 102, 103, 42
-    ctx = [[bos, 1, 2, 3, eos]]
-    q = [bos, 7, 8, 9, eos]
-    out = dp._build_input_ids(ctx, q, boq, eoq, dummy, bos, eos,
-                              task_type="next_cell")
+    bos, eos, boq, eoq = 100, 101, 102, 103
+    c1 = [bos, 1, 2, eos]
+    c2 = [bos, 3, 4, eos]
+    c3 = [bos, 5, 6, eos]
+    dt_12, dt_23, dt_q = 210, 211, 220
+    out = dp._build_input_ids_next_cell(
+        context_cells=[c1, c2, c3],
+        inter_cell_dt_tokens=[dt_12, dt_23],
+        query_dt_token=dt_q,
+        boq_id=boq, eoq_id=eoq, bos_id=bos,
+    )
+    assert out == [
+        bos, 1, 2, eos,  dt_12,
+        bos, 3, 4, eos,  dt_23,
+        bos, 5, 6, eos,
+        boq, dt_q, eoq,
+        bos,                       # sentinel
+    ]
+    # Collator grammar check.
     eoq_index = out.index(eoq)
-    assert eoq_index + 1 < len(out), "no token after <eoq>; collator will IndexError"
-    assert out[eoq_index + 1] == bos, "determine_task_type requires <bos> after <eoq>"
+    assert out[eoq_index + 1] == bos, "determine_task_type needs <bos> after <eoq>"
+
+
+def test_build_input_ids_next_cell_rejects_dt_count_mismatch():
+    import dataset_prep as dp
+    bos, eos, boq, eoq = 100, 101, 102, 103
+    with pytest.raises(ValueError, match="inter_cell_dt_tokens"):
+        dp._build_input_ids_next_cell(
+            context_cells=[[bos, 1, eos], [bos, 2, eos], [bos, 3, eos]],
+            inter_cell_dt_tokens=[200],  # should be 2
+            query_dt_token=210,
+            boq_id=boq, eoq_id=eoq, bos_id=bos,
+        )
+
+
+def test_dt_token_lookup_and_clamp(monkeypatch):
+    """_dt_token clamps out-of-range Dt values and returns the token id."""
+    import dataset_prep as dp
+    from types import SimpleNamespace
+    # Mini-tokenizer: numeric tokens cover -2..2 inclusive.
+    token_dict = {"-2": 1000, "-1": 1001, "0": 1002, "1": 1003, "2": 1004}
+    numeric_ids = {1000: -2, 1001: -1, 1002: 0, 1003: 1, 1004: 2}
+    fake = SimpleNamespace(token_dict=token_dict, numeric_token_ids=numeric_ids)
+    assert dp._dt_token(0, fake) == (0, 1002)
+    assert dp._dt_token(2, fake) == (2, 1004)
+    # Out-of-range clamps.
+    assert dp._dt_token(50, fake) == (2, 1004)
+    assert dp._dt_token(-50, fake) == (-2, 1000)
+    # Non-integer rounds to nearest int before lookup.
+    assert dp._dt_token(1.4, fake) == (1, 1003)
+    assert dp._dt_token(1.6, fake) == (2, 1004)
 
 
 def test_build_input_ids_default_matches_time_between_cells():
@@ -321,6 +359,37 @@ def test_extract_per_row_tokens_ragged_batches(tmp_path):
     assert len(rows) == 3
     assert rows[0]["tokens"] == [10, 11, 3]
     assert rows[1]["tokens"] == [10, 11, 12, 13, 3]
+    assert rows[2]["tokens"] == [10, 11, 12]
+    assert rows[2]["finished"] is False
+
+
+def test_extract_per_row_tokens_nested_list_of_lists(tmp_path):
+    """NextCell writer actually stores list[list[dict]] — one outer entry per
+    microbatch, each wrapped in a singleton list. Smoke 3343372 crashed on
+    exactly this shape; regression-guard here."""
+    import torch
+
+    import score_nextcell as sn
+
+    def _mb(tokens, length, finished):
+        return {
+            "generated_tokens": torch.tensor([tokens]),
+            "lengths": torch.tensor([length]),
+            "finished_naturally": torch.tensor([finished]),
+        }
+
+    nested = [
+        [_mb([10, 11, 3, 0], 3, True)],
+        [_mb([10, 11, 12, 3], 4, True)],
+        [_mb([10, 11, 12], 3, False)],
+    ]
+    rank0 = tmp_path / "predictions__rank_0.pt"
+    torch.save(nested, rank0)
+
+    rows = sn._extract_per_row_tokens(tmp_path)
+    assert len(rows) == 3
+    assert rows[0]["tokens"] == [10, 11, 3]
+    assert rows[1]["tokens"] == [10, 11, 12, 3]
     assert rows[2]["tokens"] == [10, 11, 12]
     assert rows[2]["finished"] is False
 
