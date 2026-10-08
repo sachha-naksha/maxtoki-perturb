@@ -126,6 +126,46 @@ def _patch_vocab_padding_for_tp(tp_size: int) -> None:
           f"(make_vocab_size_divisible_by=128 for TP={tp_size})")
 
 
+def _patch_determine_task_type_bos_check() -> None:
+    """Replace the ``is`` identity check with ``==`` in ``determine_task_type``.
+
+    Upstream classifies NextCell rows via::
+
+        elif token_ids[eoq_index + 1] is self.special_tokens["<bos>"]:
+            return "NextCell"
+
+    CPython caches ints only in ``[-5, 256]``; ``<bos>`` id (23276 in the full
+    BioNeMo dictionary) is well outside, so two separately-created ``int(23276)``
+    objects are not identical and the ``is`` check fails. The classifier then
+    falls through to ``raise ValueError("Invalid grammar found in sequence.")``.
+
+    Fix: replace the method with a version that uses ``==``. Idempotent.
+    """
+    try:
+        from bionemo.maxtoki.tokenizer import MaxTokiTokenizer as _T  # type: ignore
+    except ImportError:
+        return
+    if getattr(_T, "_determine_task_type_bos_patched", False):
+        return
+
+    def _patched(self, token_ids, eoq_index):
+        if eoq_index is None:
+            raise ValueError("No <eoq> token found in sequence.")
+        nxt = token_ids[eoq_index + 1]
+        if nxt in self.numeric_token_ids:
+            return "TimeBetweenCells"
+        if nxt == self.special_tokens["<bos>"]:
+            return "NextCell"
+        raise ValueError(
+            f"Invalid grammar: token after <eoq> is {nxt}, "
+            f"expected numeric or <bos>={self.special_tokens.get('<bos>')}."
+        )
+
+    _T.determine_task_type = _patched
+    _T._determine_task_type_bos_patched = True
+    print("[predict_runner] determine_task_type <bos> is/== patch applied")
+
+
 def run_headless_predict(
     ckpt_dir: str | Path,
     tokenizer_path: str | Path,
@@ -175,9 +215,18 @@ def run_headless_predict(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if generate_next_cell:
+        # Fix upstream `is`-vs-`==` bug in determine_task_type so our rows ending
+        # [..., <eoq>, <bos>] actually classify as NextCell (see NEXTCELL.md §8).
+        _patch_determine_task_type_bos_check()
+        # The dataset row has a <bos> sentinel after <eoq> so the collator passes;
+        # force using_pretrain_dataset=True so the generator truncates each row at
+        # eoq_index+1, giving the model a clean [..., <eoq>] prompt and letting it
+        # autoregressively emit <bos>, g_1, ..., <eos>.
+        using_pretrain_dataset = True
         print(f"[predict_runner] NextCell generation: max_tokens={max_tokens_to_generate} "
               f"top_k={top_k} top_p={top_p} temperature={temperature} "
-              f"buffer_size_gb={buffer_size_gb} chunk_size_tokens={chunk_size_tokens}")
+              f"buffer_size_gb={buffer_size_gb} chunk_size_tokens={chunk_size_tokens} "
+              f"using_pretrain_dataset={using_pretrain_dataset}")
 
     _bionemo_predict(
         ckpt_dir=str(ckpt_dir),

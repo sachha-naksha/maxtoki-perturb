@@ -150,7 +150,12 @@ def test_build_input_ids_time_between_cells_ends_with_numeric():
     assert out[-3] == 9  # last query gene (bos/eos stripped from query)
 
 
-def test_build_input_ids_next_cell_ends_at_eoq():
+def test_build_input_ids_next_cell_ends_with_bos_sentinel():
+    """NextCell rows end `[..., <eoq>, <bos>]`. The trailing <bos> is a
+    protocol-level sentinel so BioNeMo's ``collate_batch_multitask`` can
+    classify the row via ``determine_task_type`` (which indexes
+    ``token_ids[eoq_index + 1]``). The generator truncates it off before
+    autoregression. See deltaai/NEXTCELL.md §3 and §8."""
     import dataset_prep as dp
     bos, eos, boq, eoq, dummy = 100, 101, 102, 103, 42
     ctx = [[bos, 1, 2, 3, eos]]
@@ -158,10 +163,23 @@ def test_build_input_ids_next_cell_ends_at_eoq():
     out = dp._build_input_ids(ctx, q, boq_id=boq, eoq_id=eoq,
                               dummy_numeric=dummy, bos_id=bos, eos_id=eos,
                               task_type="next_cell")
-    assert out[-1] == eoq
+    assert out[-1] == bos
+    assert out[-2] == eoq
     assert dummy not in out
-    # Full grammar: ctx | <boq> query_genes <eoq>
-    assert out == [bos, 1, 2, 3, eos, boq, 7, 8, 9, eoq]
+    assert out == [bos, 1, 2, 3, eos, boq, 7, 8, 9, eoq, bos]
+
+
+def test_build_input_ids_next_cell_classifies_as_next_cell():
+    """Simulate BioNeMo's ``determine_task_type`` grammar check (==, not is)."""
+    import dataset_prep as dp
+    bos, eos, boq, eoq, dummy = 100, 101, 102, 103, 42
+    ctx = [[bos, 1, 2, 3, eos]]
+    q = [bos, 7, 8, 9, eos]
+    out = dp._build_input_ids(ctx, q, boq, eoq, dummy, bos, eos,
+                              task_type="next_cell")
+    eoq_index = out.index(eoq)
+    assert eoq_index + 1 < len(out), "no token after <eoq>; collator will IndexError"
+    assert out[eoq_index + 1] == bos, "determine_task_type requires <bos> after <eoq>"
 
 
 def test_build_input_ids_default_matches_time_between_cells():

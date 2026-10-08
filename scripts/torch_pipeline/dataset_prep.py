@@ -344,11 +344,17 @@ def _build_input_ids(
     TimeBetweenCells (default):
         [<bos>, ctx_1, <eos>, ..., <boq>, query_genes, <eoq>, dummy_numeric]
     NextCell:
-        [<bos>, ctx_1, <eos>, ..., <boq>, query_genes, <eoq>]
+        [<bos>, ctx_1, <eos>, ..., <boq>, query_genes, <eoq>, <bos>]
 
-    `determine_task_type` in BioNeMo keys off the token immediately after <eoq>:
-    numeric -> TimeBetweenCells, <bos> -> NextCell. The NextCell prompt ends at
-    <eoq>; the model autoregressively emits <bos>, g_1, ..., <eos>.
+    The trailing <bos> is required by BioNeMo's multitask collator -
+    ``MaxTokiTokenizer.determine_task_type`` reads ``token_ids[eoq_index + 1]``
+    and classifies by the token found there: numeric -> TimeBetweenCells,
+    <bos> -> NextCell. Without the <bos> sentinel the collator raises
+    ``IndexError`` during batching. The predict path then runs with
+    ``using_pretrain_dataset=True`` so ``maxtoki_generate_predict_step``
+    truncates each row at ``eoq_index + 1``, giving the model a prompt ending
+    at <eoq>; the model emits <bos>, g_1, ..., <eos> autoregressively,
+    matching the training grammar.
     """
     out: list[int] = []
     for ctx in context_cells:
@@ -360,7 +366,7 @@ def _build_input_ids(
     if task_type == "time_between_cells":
         out.append(dummy_numeric)
     elif task_type == "next_cell":
-        pass  # prompt stops at <eoq>; model generates the rest
+        out.append(bos_id)  # sentinel so determine_task_type classifies as NextCell
     else:
         raise ValueError(f"unknown task_type: {task_type}")
     return out
