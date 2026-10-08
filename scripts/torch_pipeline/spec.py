@@ -57,6 +57,7 @@ Direction = Literal["inhibit", "delete", "overexpress"]
 ApplyTo = Literal["query", "query_and_context"]
 Ordering = Literal["pseudotime", "obs_index"]
 PoolPick = Literal["first", "last", "evenly_spaced", "random"]
+TaskType = Literal["time_between_cells", "next_cell"]
 
 
 @dataclass
@@ -131,9 +132,16 @@ class QuerySpec:
             one row per group, the cell with the largest pseudotime.
         filter_obs: ``{obs_col: [allowed_values]}`` to score only matching
             cells (e.g. ``{"cell_type": ["fibroblast"]}``).
+        limit_n: If set, deterministically sub-sample this many queries after
+            ``filter_obs`` and ``strategy`` are applied. Used by smoke configs.
+            ``None`` keeps all queries.
+        seed: Seed for ``limit_n`` sub-sampling. Ignored when ``limit_n`` is
+            ``None``.
     """
     strategy: QueryStrategy = "each_cell"
     filter_obs: dict[str, list[Any]] = field(default_factory=dict)
+    limit_n: Optional[int] = None
+    seed: int = 0
 
 
 @dataclass
@@ -157,6 +165,23 @@ class PerturbationSpec:
 
 
 @dataclass
+class GenerationSpec:
+    """Decoding + KV-cache controls for ``task_type="next_cell"``.
+
+    All fields map 1:1 to kwargs of ``bionemo.maxtoki.predict.predict`` when
+    ``generate_next_cell=True``. Ignored under ``task_type="time_between_cells"``.
+    """
+    max_tokens: int = 2048               # max NEW tokens per cell
+    top_k: int = 1                       # 1 = greedy; 0 = disabled
+    top_p: float = 0.0
+    temperature: float = 1.0
+    buffer_size_gb: float = 20.0
+    buffer_guaranteed_fraction: float = 0.1
+    chunk_size_tokens: int = 4096
+    buffer_overflow_factor: float = 1.0
+
+
+@dataclass
 class ExperimentSpec:
     """Top-level spec for one zero-shot perturbation experiment.
 
@@ -171,12 +196,21 @@ class ExperimentSpec:
         seq_length: Model context length. Default ``16384`` for trajectory
             tasks; the per-cell rank-value cap is computed from this so the
             worst-case row fits.
+        task_type: Which BioNeMo task head to run.
+            ``time_between_cells`` (default) emits a scalar delta_t per row;
+            ``next_cell`` autoregressively generates the next cell's rank-value
+            expression tokens. The row grammar changes accordingly (see
+            ``dataset_prep._build_input_ids``).
+        generation: Decoding + KV-cache config, used only when
+            ``task_type="next_cell"``.
     """
     data: DataSpec
     context: ContextSpec = field(default_factory=ContextSpec)
     query: QuerySpec = field(default_factory=QuerySpec)
     perturbation: PerturbationSpec = field(default_factory=PerturbationSpec)
     seq_length: int = 16384
+    task_type: TaskType = "time_between_cells"
+    generation: GenerationSpec = field(default_factory=GenerationSpec)
 
     def validate(self) -> None:
         """Raise ``ValueError`` if the spec is internally inconsistent."""
@@ -204,6 +238,26 @@ class ExperimentSpec:
             raise ValueError("context.max_cells must be >= 1")
         if not (p.gene or p.gene_symbol):
             raise ValueError("perturbation must set one of gene or gene_symbol.")
+        if self.task_type == "next_cell":
+            g = self.generation
+            if g.max_tokens < 1:
+                raise ValueError("generation.max_tokens must be >= 1 for next_cell.")
+            if g.top_k < 0:
+                raise ValueError("generation.top_k must be >= 0.")
+            if not (0.0 <= g.top_p <= 1.0):
+                raise ValueError("generation.top_p must be in [0, 1].")
+            if g.temperature <= 0:
+                raise ValueError("generation.temperature must be > 0.")
+            # Hard floor on the per-cell token budget. (seq_length - max_tokens - 1)
+            # must leave enough room for K+1 cells. Validates the §5.1 arithmetic.
+            k_plus_1 = max(1, c.max_cells) + 1
+            per_cell_cap = (self.seq_length - g.max_tokens - 1) // k_plus_1
+            if per_cell_cap < 512:
+                raise ValueError(
+                    f"next_cell per-cell token cap would be {per_cell_cap} "
+                    f"(seq_length={self.seq_length}, max_tokens={g.max_tokens}, "
+                    f"K+1={k_plus_1}). Raise seq_length or lower max_tokens / max_cells."
+                )
 
     def to_dict(self) -> dict:
         return {
@@ -212,6 +266,8 @@ class ExperimentSpec:
             "query": asdict(self.query),
             "perturbation": asdict(self.perturbation),
             "seq_length": self.seq_length,
+            "task_type": self.task_type,
+            "generation": asdict(self.generation),
         }
 
 
@@ -250,14 +306,20 @@ def spec_from_dict(raw: dict) -> ExperimentSpec:
     query = QuerySpec(
         strategy=query_raw.get("strategy", "each_cell"),
         filter_obs=query_raw.get("filter_obs", {}) or {},
+        limit_n=query_raw.get("limit_n"),
+        seed=int(query_raw.get("seed", 0)),
     )
     perturbation = PerturbationSpec(**raw["perturbation"])
+    generation_raw = raw.get("generation") or {}
+    generation = GenerationSpec(**generation_raw)
     spec = ExperimentSpec(
         data=data,
         context=context,
         query=query,
         perturbation=perturbation,
         seq_length=int(raw.get("seq_length", 16384)),
+        task_type=raw.get("task_type", "time_between_cells"),
+        generation=generation,
     )
     spec.validate()
     return spec

@@ -143,6 +143,16 @@ def run_headless_predict(
     write_interval: str = "epoch",
     using_pretrain_dataset: bool = False,
     limit_predict_batches_to_n: int | None = None,
+    # NextCell / generation controls (ignored when generate_next_cell=False)
+    generate_next_cell: bool = False,
+    max_tokens_to_generate: int = 2048,
+    top_k: int = 1,
+    top_p: float = 0.0,
+    temperature: float = 1.0,
+    buffer_size_gb: float = 20.0,
+    buffer_guaranteed_fraction: float = 0.1,
+    chunk_size_tokens: int = 4096,
+    buffer_overflow_factor: float = 1.0,
 ) -> Path:
     from bionemo.maxtoki.predict import predict as _bionemo_predict  # type: ignore
 
@@ -164,6 +174,11 @@ def run_headless_predict(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    if generate_next_cell:
+        print(f"[predict_runner] NextCell generation: max_tokens={max_tokens_to_generate} "
+              f"top_k={top_k} top_p={top_p} temperature={temperature} "
+              f"buffer_size_gb={buffer_size_gb} chunk_size_tokens={chunk_size_tokens}")
+
     _bionemo_predict(
         ckpt_dir=str(ckpt_dir),
         tokenizer_path=str(tokenizer_path),
@@ -177,9 +192,17 @@ def run_headless_predict(
         micro_batch_size=micro_batch_size,
         seq_length=seq_length,
         precision=precision,
-        generate_next_cell=False,
+        generate_next_cell=generate_next_cell,
         write_interval=write_interval,
         using_pretrain_dataset=using_pretrain_dataset,
         limit_predict_batches_to_n=limit_predict_batches_to_n,
+        max_tokens_to_generate=max_tokens_to_generate,
+        top_k=top_k,
+        top_p=top_p,
+        temperature=temperature,
+        buffer_size_gb=buffer_size_gb,
+        buffer_guaranteed_fraction=buffer_guaranteed_fraction,
+        chunk_size_tokens=chunk_size_tokens,
+        buffer_overflow_factor=buffer_overflow_factor,
     )
     return output_dir

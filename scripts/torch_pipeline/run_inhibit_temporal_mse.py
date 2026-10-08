@@ -78,6 +78,16 @@ def _apply_cli_overrides(spec: ExperimentSpec, args) -> ExperimentSpec:
         spec.perturbation.direction = args.direction
     if args.seq_length:
         spec.seq_length = args.seq_length
+    if getattr(args, "task", None):
+        spec.task_type = args.task
+    if getattr(args, "max_tokens", None) is not None:
+        spec.generation.max_tokens = args.max_tokens
+    if getattr(args, "top_k", None) is not None:
+        spec.generation.top_k = args.top_k
+    if getattr(args, "top_p", None) is not None:
+        spec.generation.top_p = args.top_p
+    if getattr(args, "temperature", None) is not None:
+        spec.generation.temperature = args.temperature
     spec.validate()
     return spec
 
@@ -216,6 +226,18 @@ def main() -> None:
     p.add_argument("--wandb-name", default=None)
     p.add_argument("--wandb-tags", nargs="*", default=None)
     p.add_argument("--wandb-mode", default=None, choices=["online", "offline", "disabled"])
+    # NextCell / generation flags (ignored when --task time_between_cells)
+    p.add_argument("--task", choices=["time_between_cells", "next_cell"], default=None,
+                   help="Override spec.task_type. 'next_cell' triggers autoregressive "
+                        "generation and the NextCell scorer.")
+    p.add_argument("--max-tokens", dest="max_tokens", type=int, default=None,
+                   help="NextCell: max NEW tokens to generate per cell.")
+    p.add_argument("--top-k", dest="top_k", type=int, default=None,
+                   help="NextCell: top-k sampling (1 = greedy).")
+    p.add_argument("--top-p", dest="top_p", type=float, default=None,
+                   help="NextCell: top-p (nucleus) sampling.")
+    p.add_argument("--temperature", dest="temperature", type=float, default=None,
+                   help="NextCell: softmax temperature.")
     args = p.parse_args()
 
     main_rank = _is_main_rank()  # NEW: gate everything that touches files / wandb
@@ -283,12 +305,14 @@ def main() -> None:
         except ImportError:
             from predict_runner import run_headless_predict
 
+        is_next_cell = spec.task_type == "next_cell"
         for label, ds_dir, pred_dir in [
             ("baseline", base_ds_dir, base_pred_dir),
             ("perturbed", pert_ds_dir, pert_pred_dir),
         ]:
             if main_rank:
-                print(f"[info] running BioNeMo predict on {label} dataset")
+                print(f"[info] running BioNeMo predict on {label} dataset "
+                      f"(task={spec.task_type})")
             run_headless_predict(
                 ckpt_dir=args.ckpt_dir,
                 tokenizer_path=args.tokenizer_path,
@@ -302,6 +326,15 @@ def main() -> None:
                 pipeline_model_parallel_size=args.pipeline_parallel_size,
                 context_parallel_size=args.context_parallel_size,
                 precision=args.precision,
+                generate_next_cell=is_next_cell,
+                max_tokens_to_generate=spec.generation.max_tokens,
+                top_k=spec.generation.top_k,
+                top_p=spec.generation.top_p,
+                temperature=spec.generation.temperature,
+                buffer_size_gb=spec.generation.buffer_size_gb,
+                buffer_guaranteed_fraction=spec.generation.buffer_guaranteed_fraction,
+                chunk_size_tokens=spec.generation.chunk_size_tokens,
+                buffer_overflow_factor=spec.generation.buffer_overflow_factor,
             )
 
     # === Stage 3: score + viz + wandb finalize (rank 0 only) ===
@@ -313,6 +346,52 @@ def main() -> None:
 
     base_ds = datasets.load_from_disk(str(base_ds_dir))
     gene_present = [bool(r["gene_present_in_query"]) for r in base_ds]
+
+    if spec.task_type == "next_cell":
+        try:
+            from .score_nextcell import score_nextcell
+        except ImportError:
+            from score_nextcell import score_nextcell
+        base_dec, pert_dec, nc_summary = score_nextcell(
+            baseline_dir=base_pred_dir,
+            perturbed_dir=pert_pred_dir,
+            tokenizer_path=args.tokenizer_path,
+            baseline_dataset_dir=base_ds_dir,
+            out_path=out_dir / "scores_nextcell.npz",
+            gene_present_flags=gene_present,
+            target_ensg=ensembl,
+        )
+        summary_dict = {
+            "task": "next_cell",
+            **{k: v for k, v in nc_summary.__dict__.items() if not k.startswith("_")},
+            "gene_ensembl": ensembl,
+            "gene_token": gene_token,
+            "direction": spec.perturbation.direction,
+            "context_strategy": spec.context.strategy,
+            "query_strategy": spec.query.strategy,
+            "variant": args.variant,
+            "seq_length": spec.seq_length,
+            "generation": {
+                "max_tokens": spec.generation.max_tokens,
+                "top_k": spec.generation.top_k,
+                "top_p": spec.generation.top_p,
+                "temperature": spec.generation.temperature,
+            },
+        }
+        with open(out_dir / "summary.json", "w") as f:
+            json.dump(summary_dict, f, indent=2, default=str)
+        print("=== summary (next_cell) ===")
+        print(json.dumps(summary_dict, indent=2, default=str))
+        if wandb_run is not None:
+            wandb_run.summary.update(
+                {k: v for k, v in summary_dict.items()
+                 if isinstance(v, (int, float, str, bool))}
+            )
+        _wandb_finalize_if_run = wandb_run
+        if _wandb_finalize_if_run is not None:
+            _wandb_finalize_if_run.finish()
+        return
+
     paired_metadata = {
         "gene_present": gene_present,
         "direction": spec.perturbation.direction,

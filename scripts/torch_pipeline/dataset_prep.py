@@ -139,15 +139,26 @@ def _filter_query_pool(picks: list[_CellPick], adata, spec: ExperimentSpec) -> l
 
 def _select_queries(picks: list[_CellPick], spec: ExperimentSpec) -> list[_CellPick]:
     if spec.query.strategy == "each_cell":
-        return picks
-    if spec.query.strategy == "latest_per_group":
+        chosen = picks
+    elif spec.query.strategy == "latest_per_group":
         by_group: dict = {}
         for p in picks:
             cur = by_group.get(p.group)
             if cur is None or p.pseudotime > cur.pseudotime:
                 by_group[p.group] = p
-        return list(by_group.values())
-    raise ValueError(f"unknown query.strategy: {spec.query.strategy}")
+        chosen = list(by_group.values())
+    else:
+        raise ValueError(f"unknown query.strategy: {spec.query.strategy}")
+
+    # Deterministic sub-sampling for smoke configs. Sort by obs idx first so the
+    # draw is stable across runs regardless of upstream enumeration order.
+    if spec.query.limit_n is not None and spec.query.limit_n < len(chosen):
+        rng = np.random.default_rng(spec.query.seed)
+        chosen_sorted = sorted(chosen, key=lambda p: p.idx)
+        picked_idx = sorted(rng.choice(len(chosen_sorted), size=spec.query.limit_n,
+                                       replace=False).tolist())
+        chosen = [chosen_sorted[i] for i in picked_idx]
+    return chosen
 
 
 def _resolve_pool(
@@ -278,18 +289,28 @@ def _tokenize_one_cell(adata, ensembl_ids, pick: _CellPick, tokenizer: CellToken
     return tokenizer.tokenize_expression(ensembl_ids, counts, n_counts=n_counts_val, max_len=max_len)
 
 
-def _per_cell_max_len(seq_length: int, n_context: int) -> int:
+def _per_cell_max_len(seq_length: int, n_context: int, task_type: str = "time_between_cells",
+                      max_tokens_to_generate: int = 0) -> int:
     """How many tokens (incl. BOS/EOS) each cell can use so the row fits in seq_length.
 
-    Row layout:
-        K context cells:  K * rve_K
-        query block:      <boq> + (query_genes) + <eoq>  = (rve_query - 2) + 2 = rve_query
-        trailing dummy:   1
-    Total = K * rve_K + rve_query + 1 <= seq_length
-    Distribute equally: rve = (seq_length - 1) // (K + 1)
+    TimeBetweenCells row:
+        K ctx cells + query + <boq>/<eoq> + 1 dummy numeric <= seq_length
+        rve = (seq_length - 1) // (K + 1)
+
+    NextCell row (prompt only; model generates up to max_tokens_to_generate NEW tokens
+    after <eoq>):
+        K ctx cells + query + <boq>/<eoq> + max_tokens_to_generate <= seq_length
+    DynamicInferenceContext sizes the KV cache as initial_seq_len + max_tokens_to_generate,
+    so we reserve the generation budget up front.
+        rve = (seq_length - max_tokens_to_generate - 1) // (K + 1)
+    (-1 kept symmetric with the TimeBetweenCells formula.)
     """
     k = max(1, n_context)
-    rve = (seq_length - 1) // (k + 1)
+    if task_type == "next_cell":
+        budget = seq_length - max(0, max_tokens_to_generate) - 1
+    else:
+        budget = seq_length - 1
+    rve = budget // (k + 1)
     return min(rve, MODEL_INPUT_SIZE)
 
 
@@ -316,7 +337,19 @@ def _build_input_ids(
     dummy_numeric: int,
     bos_id: int,
     eos_id: int,
+    task_type: str = "time_between_cells",
 ) -> list[int]:
+    """Assemble the model input row.
+
+    TimeBetweenCells (default):
+        [<bos>, ctx_1, <eos>, ..., <boq>, query_genes, <eoq>, dummy_numeric]
+    NextCell:
+        [<bos>, ctx_1, <eos>, ..., <boq>, query_genes, <eoq>]
+
+    `determine_task_type` in BioNeMo keys off the token immediately after <eoq>:
+    numeric -> TimeBetweenCells, <bos> -> NextCell. The NextCell prompt ends at
+    <eoq>; the model autoregressively emits <bos>, g_1, ..., <eos>.
+    """
     out: list[int] = []
     for ctx in context_cells:
         out.extend(ctx)
@@ -324,7 +357,12 @@ def _build_input_ids(
     out.append(boq_id)
     out.extend(query_genes)
     out.append(eoq_id)
-    out.append(dummy_numeric)
+    if task_type == "time_between_cells":
+        out.append(dummy_numeric)
+    elif task_type == "next_cell":
+        pass  # prompt stops at <eoq>; model generates the rest
+    else:
+        raise ValueError(f"unknown task_type: {task_type}")
     return out
 
 
@@ -396,9 +434,17 @@ def build_paired_dataset(
 
     cache: dict[int, list[int]] = {}  # idx -> tokenized cell
 
-    for q in queries:
+    task_type = spec.task_type
+    gen_budget = spec.generation.max_tokens if task_type == "next_cell" else 0
+
+    for row_index, q in enumerate(queries):
         ctx_picks = _select_context(q, all_picks, spec.context, pool_cache=pool_cache)
-        per_cell_cap = _per_cell_max_len(spec.seq_length, n_context=len(ctx_picks))
+        per_cell_cap = _per_cell_max_len(
+            spec.seq_length,
+            n_context=len(ctx_picks),
+            task_type=task_type,
+            max_tokens_to_generate=gen_budget,
+        )
 
         ctx_tokens: list[list[int]] = []
         for cp in ctx_picks:
@@ -418,13 +464,14 @@ def build_paired_dataset(
         query_tokens_pert = perturb_tokens(query_tokens, gene_token, direction, bos, eos)
 
         base_input_ids = _build_input_ids(
-            ctx_tokens, query_tokens, boq, eoq, dummy_numeric, bos, eos
+            ctx_tokens, query_tokens, boq, eoq, dummy_numeric, bos, eos, task_type=task_type,
         )
         pert_input_ids = _build_input_ids(
-            ctx_tokens_pert, query_tokens_pert, boq, eoq, dummy_numeric, bos, eos
+            ctx_tokens_pert, query_tokens_pert, boq, eoq, dummy_numeric, bos, eos, task_type=task_type,
         )
 
         meta = {
+            "row_index": row_index,
             "cell_id": q.cell_id,
             "group": str(q.group),
             "query_pseudotime": q.pseudotime,
@@ -436,6 +483,7 @@ def build_paired_dataset(
             "direction": direction,
             "apply_to": spec.perturbation.apply_to,
             "gene_present_in_query": gene_token in query_tokens,
+            "task_type": task_type,
         }
         base_records.append({**meta, "input_ids": base_input_ids, "condition": "baseline"})
         pert_records.append({**meta, "input_ids": pert_input_ids, "condition": "perturbed"})
@@ -450,9 +498,35 @@ def build_paired_dataset(
     base_ds.save_to_disk(str(out_dir_baseline))
     pert_ds.save_to_disk(str(out_dir_perturbed))
 
+    # Row-order manifest: lets the NextCell scorer fail loudly on any pairing drift
+    # between baseline and perturbed. One line per row with the fields needed to
+    # reconstruct the paired join without touching the HF dataset.
+    import json as _json
+    manifest = [
+        {
+            "row_index": r["row_index"],
+            "cell_id": r["cell_id"],
+            "group": r["group"],
+            "query_pseudotime": r["query_pseudotime"],
+            "context_cell_ids": r["context_cell_ids"],
+            "gene_present_in_query": r["gene_present_in_query"],
+        }
+        for r in base_records
+    ]
+    manifest_path = Path(out_dir_baseline).parent / "row_manifest.json"
+    manifest_path.write_text(_json.dumps({
+        "task_type": spec.task_type,
+        "gene_ensembl": gene_ensembl,
+        "gene_token": int(gene_token),
+        "direction": direction,
+        "n_rows": len(manifest),
+        "rows": manifest,
+    }, indent=2))
+
     summary = {
         "n_rows": len(base_records),
         "seq_length": spec.seq_length,
+        "task_type": spec.task_type,
         "max_input_len_baseline": max(len(r["input_ids"]) for r in base_records),
         "max_input_len_perturbed": max(len(r["input_ids"]) for r in pert_records),
         "min_context_cells": min(r["n_context_cells"] for r in base_records),
@@ -465,5 +539,10 @@ def build_paired_dataset(
         "context_strategy": spec.context.strategy,
         "query_strategy": spec.query.strategy,
         "n_query_cells_with_gene": sum(r["gene_present_in_query"] for r in base_records),
+        "row_manifest_path": str(manifest_path),
     }
+    if spec.task_type == "next_cell":
+        import dataclasses as _dc
+        summary["generation"] = _dc.asdict(spec.generation)
+        summary["max_tokens_to_generate"] = spec.generation.max_tokens
     return out_dir_baseline, out_dir_perturbed, summary

@@ -1,7 +1,7 @@
 # Agent brief: wire NextCell on the Aging SKM dataset (DeltaAI, maxtoki-perturb)
 
 You are a Claude agent on NCSA **DeltaAI** (aarch64 Grace + GH200), working inside
-`/projects/bhdw/asachan/methods/Earth_RL/maxtoki-perturb`. The ARM container, prefix,
+`/projects/bhdw/asachan/methods/Earth_RL/maxtoki-perturb`. The ARM container, prefix, 
 and MaxToki-217M/1B checkpoints (HF + BioNeMo distcp) are already in place; see
 `deltaai/HANDOFF.md` and `deltaai/SETUP_LOG.md`. The existing TimeBetweenCells pipeline
 (`scripts/torch_pipeline/`) already runs end-to-end on this cluster — this brief is TODO #3
