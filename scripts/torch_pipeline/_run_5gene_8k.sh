@@ -14,7 +14,7 @@ export PERTURB_DIR=/projects/bhdw/asachan/methods/maxtoki-perturb
 export OUT_DIR=$PERTURB_DIR/out
 export DATA_DIR=$PERTURB_DIR/data
 export CACHE_DIR=/work/hdd/bgdb/asachan/cache/maxtoki
-export WANDB_API_KEY=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
+: "${WANDB_API_KEY:?Set WANDB_API_KEY in the environment; never hard-code it}"
 
 mkdir -p "$OUT_DIR" "$DATA_DIR" "$CACHE_DIR"/{hf,tmp,megatron,wandb}
 
