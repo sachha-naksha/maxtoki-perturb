@@ -1,0 +1,53 @@
+# 10-query variant for 1 h interactive partitions (delta job 22764367: 20 queries need ~85 min).
+# Delta (A40 48 GB / A100 40 GB) copy of scripts/torch_pipeline/configs/pdk4_inhibit_nextcell_smoke.yaml.
+# Only generation.buffer_size_gb differs; the GH200 value (40 GB) preallocates the
+# whole card and OOMs in flash-attn (delta job 22764320).
+# NextCell SMOKE: 20 queries deterministically sub-sampled from the 2000-row
+# OM6+OM9 (80y) full pool. Full-run prompt settings (seq_length=16384, 3 YM2
+# evenly-spaced context cells, 2048 generation cap). Mirrors
+# pdk4_inhibit_nextcell_full.yaml exactly except for query.limit_n + query.seed.
+data:
+  h5ad: ./data/zero_shot/rna_zero_shot.preprocessed.h5ad
+  pseudotime_col: Pseudotime
+  group_col: sample
+  cell_id_col: null
+  count_col: nCount_RNA
+
+context:
+  strategy: pool
+  max_cells: 3
+  ordering: pseudotime
+  pool_filter:
+    age: [34]
+  pool_select:
+    n: 3
+    pick: evenly_spaced
+    sort_by: pseudotime
+    seed: 0
+
+query:
+  strategy: each_cell
+  filter_obs:
+    age: [80]
+  limit_n: 10                    # 10 queries = 20 generation rows; ~2.1 min/row at the 4096 cap on H200 fits the 1 h interactive limit
+  seed: 42
+
+perturbation:
+  gene_symbol: PDK4
+  gene: null
+  direction: inhibit
+  apply_to: query
+
+seq_length: 16384
+task_type: next_cell
+
+generation:
+  max_tokens: 4096               # NVIDIA documented default
+  top_k: 1                       # greedy for deterministic paired comparison
+  top_p: 0.0
+  temperature: 1.0
+  buffer_size_gb: 16.0           # Delta: 40.0 OOMs on A40 (44 GiB) / A100-40GB. KV is ~54 KB/token
+                                 # for 217M (11 layers x 1232 hidden x bf16), so 16 GB holds ~300k tokens.
+  buffer_guaranteed_fraction: 0.1
+  chunk_size_tokens: 4096
+  buffer_overflow_factor: 50.0   # upstream default

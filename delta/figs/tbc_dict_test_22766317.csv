@@ -1,0 +1,6 @@
+run,mean_delta_t,sem,n
+original (May, old dict),-37.7070,2.2388,2000
+A  old dict (rerun),-37.4118,2.2431,2000
+B  old dict, untrained rows re-drawn,-62.2341,2.2885,2000
+C  aligned dict,-176.3573,10.9903,2000
+D  aligned dict, untrained rows re-drawn,-682.1935,24.6455,2000
