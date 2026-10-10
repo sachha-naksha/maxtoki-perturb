@@ -1,8 +1,8 @@
 """Extract token_dictionary.json from a BioNeMo MaxToki distcp context/io.json.
 
-The fiddle-config dump stores the vocabulary as the largest tuple of
-(Index(index=N), token_name) pairs. We invert that to a {name: id} dict
-and write it out as the JSON file `bionemo.maxtoki.predict` expects.
+Read the tokenizer's actual token_dictionary values from the Fiddle dump.
+Serialized tuple indices describe dictionary insertion order, not token IDs.
+Write the stored {name: id} mapping as the JSON file prediction expects.
 
 Run:
     python -m scripts.torch_pipeline.extract_token_dict \\
@@ -12,53 +12,57 @@ Run:
 from __future__ import annotations
 
 import argparse
+import ast
 import json
-import re
-import sys
 from pathlib import Path
-
-
-_INDEX_RE = re.compile(r"Index\(index=(\d+)\)")
-
-
-def _is_str_tuple(obj: dict) -> bool:
-    if not isinstance(obj, dict):
-        return False
-    t = obj.get("type", {})
-    if isinstance(t, dict) and t.get("name") != "tuple":
-        return False
-    items = obj.get("items", [])
-    return bool(items) and all(
-        isinstance(it, list) and len(it) == 2
-        and isinstance(it[1], str)
-        and _INDEX_RE.match(str(it[0]))
-        for it in items
-    )
 
 
 def extract(io_path: Path) -> dict[str, int]:
     raw = json.loads(io_path.read_text())
     objects = raw.get("objects", raw)
 
-    candidates: list[tuple[str, list]] = []
-    for key, obj in objects.items():
-        if _is_str_tuple(obj):
-            candidates.append((key, obj["items"]))
+    def resolve(value):
+        seen = set()
+        while isinstance(value, dict) and value.get("type") == "ref":
+            key = value["key"]
+            if key in seen:
+                raise ValueError(f"Cyclic reference {key!r} in {io_path}")
+            seen.add(key)
+            value = objects[key]
+        if isinstance(value, dict) and value.get("type") == "leaf":
+            return value["value"]
+        return value
+
+    # Follow the tokenizer's named attribute, not an unrelated tuple of keys.
+    candidates = []
+    for obj in objects.values():
+        for attr, value in obj.get("items", []):
+            if attr == "Attr(name='token_dictionary')":
+                candidates.append(resolve(value))
     if not candidates:
-        sys.exit(f"no string-valued indexed tuple in {io_path}")
+        raise ValueError(f"No token_dictionary attribute in {io_path}")
 
-    # Vocab is the largest such tuple
-    candidates.sort(key=lambda x: -len(x[1]))
-    key, items = candidates[0]
-    print(f"[extract] using {key!r} ({len(items)} entries)")
-
-    id_to_token: dict[int, str] = {}
-    for idx_str, name in items:
-        m = _INDEX_RE.match(idx_str)
-        if m:
-            id_to_token[int(m.group(1))] = name
-
-    return {name: tid for tid, name in id_to_token.items()}
+    mappings = []
+    for obj in candidates:
+        if obj.get("type", {}).get("name") != "dict":
+            raise ValueError(f"token_dictionary is not a serialized dict in {io_path}")
+        mapping = {}
+        for key, value in obj["items"]:
+            if not key.startswith("Key(key=") or not key.endswith(")"):
+                raise ValueError(f"Invalid dictionary key {key!r} in {io_path}")
+            token = ast.literal_eval(key[len("Key(key="):-1])
+            token_id = resolve(value)
+            if not isinstance(token, str) or type(token_id) is not int or token_id < 0:
+                raise ValueError(f"Invalid token mapping {token!r}: {token_id!r}")
+            if token in mapping:
+                raise ValueError(f"Duplicate token {token!r} in {io_path}")
+            mapping[token] = token_id
+        if not mapping or len(set(mapping.values())) != len(mapping):
+            raise ValueError(f"Empty vocabulary or duplicate token IDs in {io_path}")
+        mappings.append(mapping)
+    if any(mapping != mappings[0] for mapping in mappings[1:]):
+        raise ValueError(f"Conflicting token_dictionary mappings in {io_path}")
+    return mappings[0]
 
 
 def main() -> None:

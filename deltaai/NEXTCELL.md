@@ -270,3 +270,122 @@ different k for Jaccard@k, compute set-overlap enrichment).
   tokens and uses a `Δt` as the question slot in `predict_time_or_cell="cell"` mode.
   Feeding the model something it has never seen during training produces
   low-entropy default-mode garbage. Match the NVIDIA grammar exactly.
+
+## 9. What NextCell gives you vs. TimeBetweenCells, and what the smoke does / doesn't tell you
+
+Written 2026-10-08 against the TBC outputs in `out/<gene>_217m_<dir>_evenly_seq8k/` and
+the NextCell smoke outputs in `out/nextcell_pdk4_inhibit_smoke_*`.
+
+### 9.1 The question each task answers
+
+Both tasks use the same prompt prefix — 3 young (YM2, 34y) context cells picked
+evenly across pseudotime — and the same 2000 old (OM6+OM9, 80y) target cells. They
+differ in what the model is asked at the end, and therefore in what a perturbation
+can tell you.
+
+| | TimeBetweenCells (what you have in `out/*_seq8k`) | NextCell |
+|---|---|---|
+| **Question posed** | "Here is the old target cell's expression. How far in time is it from the young trajectory?" | "Starting from the young trajectory, what does a cell look like `Δt_q` time units later?" |
+| **Target cell's role** | fed into the prompt as the query (`<boq> target_genes <eoq>`) | **not fed in** — only its pseudotime is used, to set `Δt_q` |
+| **Where the perturbation lands** | on the target (query) cell | on `ctx_3`, the last young context cell (the query is a scalar) |
+| **Model output per row** | one number, `Δt` | an ordered gene list `g_1 … g_K` (= predicted rank-value expression of the future cell) |
+| **Perturbation effect per row** | `Δt_perturbed − Δt_baseline`: did silencing the gene make the old cell read as younger / older | two ranked gene lists to compare: which genes moved, appeared, disappeared |
+| **Summary you get** | `summary.json`: `mean_delta_t`, `mean_mse`, `n_rows_with_gene_in_query`, `*_present` variants; `scores.npz`; `viz/` | `summary_nextcell.json`: `mean_jaccard_at_{50,100,500}`, `mean_spearman_shared`, `n_*_finished`; `scores_nextcell.npz`; `decoded_nextcell.json` |
+
+So TBC collapses the model's reaction to a perturbation onto a single axis (a shift
+along pseudotime, in the units of the `Pseudotime` column). It tells you *how much*
+the model thinks the gene edit moves a cell along aging, averaged over 2000 real old
+cells — that is what `mean_delta_t_8k_evenly*.csv` and the `by_donor_*` figures show.
+
+NextCell gives you the model's **counterfactual transcriptome**: the predicted
+rank-ordered gene list of a cell `Δt_q` ahead of the young trajectory, once with
+PDK4 at its native rank in `ctx_3` and once with PDK4 pushed to the bottom. Comparing
+the two lists tells you *what changes*, not just how much — which genes rise or fall
+in predicted rank when PDK4 is silenced upstream. That is the only one of the two
+tasks whose output you can hand to gene-set / pathway analysis, or compare gene-by-
+gene against the real old target cell's ranking (not implemented yet; the decoded
+lists in `decoded_nextcell.json` are kept for exactly this kind of re-scoring).
+
+### 9.2 What is in the NextCell output directory
+
+| file | contents |
+|---|---|
+| `row_manifest.json` | one record per query: `row_index`, `cell_id`, `group` (donor), `query_pseudotime`, `context_cell_ids` (same 3 for every row), `gene_present_in_query` |
+| `baseline_predictions/`, `perturbed_predictions/` | raw `generated_tokens`, `lengths`, `finished_naturally` per row (`predictions__rank_0.pt`) |
+| `decoded_nextcell.json` | per row: `baseline.ensg_order`, `perturbed.ensg_order` — the two predicted rankings as ENSG lists, deduped, `<bos>`/`<eos>` stripped |
+| `scores_nextcell.npz` | per-row arrays: `jaccard_at_50/100/500`, `spearman`, `spearman_overlap`, `baseline_finished`, `perturbed_finished`, `both_finished`, `gene_present`, `baseline_length`, `perturbed_length`, `*_n_invalid` |
+| `summary_nextcell.json` | means of the above, split by `gene_present` and by finished-vs-capped; plus `sample[]` with the first rows' paired top-20 lists |
+| `summary.json` | the same summary with the spec metadata appended (gene, direction, variant, generation settings) |
+
+How to read the per-row metrics:
+- **Jaccard@k = 1.0** → the top-k predicted genes are the same set with and without
+  the edit (order may differ). **Lower** → the edit changed *which* genes the model
+  puts at the top. @50 is the "marker gene" view; @500 the broad-program view.
+- **Spearman on shared** → how much the *order* of genes present in both lists was
+  reshuffled (1.0 = same ranking). `spearman_overlap` is the number of shared genes
+  it was computed on (≈1800 in the smokes).
+- **`*_finished`** → whether the model emitted `<eos>` before `max_tokens`. If false,
+  the list is a truncated prefix of the model's ranking and k-dependent metrics are
+  only trustworthy for k ≪ length.
+- **`gene_present`** → whether PDK4 was actually in the cell that got edited (see 9.4).
+
+### 9.3 What the smoke test is for
+
+The smoke is the full-run pipeline on a deterministic 10- or 20-query subset
+(`query.limit_n`, `query.seed`) with the full-run prompt settings. It is a *gate*, not
+an experiment. It establishes:
+
+1. **Mechanics end to end** — the NVIDIA grammar rows pass the collator, the generator
+   emits gene tokens (no numeric/special leakage: `*_n_invalid == 0`), the decoder
+   produces ENSG lists, and the baseline/perturbed pairing survives (`row_manifest`
+   cross-check).
+2. **Cost for sizing the real run** — tokens/sec and peak GPU memory. On Delta
+   (job 22764367/22764696, H200): ~29–31 tok/s, 20.5 GB peak, **~2.1 min per row**
+   because every row runs to the 4096-token cap; 2 rows per query → ~4.2 min/query.
+   That makes the 2000-query spec ≈ 140 GPU-hours on one H200 — it needs sharding
+   across GPUs or a lower `max_tokens` before it is launchable.
+3. **Determinism** — greedy decoding means a rerun of the same spec must reproduce
+   every row byte-for-byte; any drift is a numerics problem, not noise (§8).
+4. **A first look at the effect** — are the perturbed lists different from the
+   baseline at all, and do they differ only where the edit could matter.
+
+What the smoke does **not** give you: statistics. 10–20 cells cannot stratify by donor
+or pseudotime, cannot say which gene rank shifts are reproducible across cells, and a
+mean Jaccard over 10 rows has no error bar worth quoting. That is what the full
+(or an intermediate 200–500 query) run is for.
+
+### 9.4 Two things the current smokes already show
+
+- **No generation has ever finished naturally.** Every row in every smoke so far
+  (ARM 2048-cap runs and Delta 4096-cap runs) hits the cap: `n_both_finished = 0`.
+  The ARM smoke gate in `PROGRESS_NEXTCELL.md` asked for ≥18/20 natural completions,
+  so by that criterion the gate has not been passed. A real cell has ~2000 non-zero
+  genes, so lists of 4096 are the model ranking genes well past where expression
+  would be zero. Metrics at k ≤ 500 are still meaningful (they only look at the head
+  of the list), but "predicted cell length" is not a usable readout, and half of every
+  generation's cost buys nothing. Whether `<eos>` is reachable at all with greedy
+  decoding, or only with sampling, is open.
+- **The present/absent split is degenerate under the NVIDIA grammar.** Because the
+  perturbation sits in `ctx_3` and `ctx_3` is the same cell for all rows,
+  `gene_present` is identical for every row — in the Delta smoke prep summary it is
+  20/20 present. The built-in negative control that TBC had ("rows where the gene is
+  absent must show zero effect") no longer exists; a NextCell control has to be
+  constructed explicitly (e.g. a `delete`/`inhibit` of a gene absent from `ctx_3`, or
+  a different context pool).
+- **The prompt depends only on `Δt_q`, so the 2000-query run has only 68 distinct rows.**
+  The target cell is not in the prompt; with a shared context pool the whole row is
+  determined by `round(ptime(target)) − ptime(ctx_3)`. The Delta smoke confirmed it:
+  rows 0 and 6 (CELL2335 / OM6 and CELL4348 / OM9, both pseudotime 85.0) produced
+  byte-identical generations and scores. Over all 2000 OM cells, `round(ptime − 100)`
+  takes 68 values (−67…0; OM6 covers 68, OM9 67). Consequences: (a) the "full run"
+  is really 68 unique queries × 2 rows ≈ 136 generations ≈ 5 GPU-h at the 4096 cap,
+  not 4000 generations; the per-cell version just duplicates them. (b) Per-cell or
+  per-donor statistics over 2000 rows would be counting exact copies — the effective
+  sample size is the number of distinct Δt_q, and donors differ only in which Δt_q
+  values they populate. (c) If per-cell variation is wanted, the target cell has to
+  enter the prompt (e.g. `apply_to`/context built from the target's own trajectory),
+  which is a different experiment from the current spec.
+- **Caution on the numbers already in `out/`.** `out/nextcell_pdk4_inhibit_smoke_3343372/summary_nextcell.json`
+  (Jaccard@50 0.90 overall / 0.79 present) comes from the **old, wrong prompt grammar**
+  (§8, last bullet) and should not be quoted as a NextCell result. The first completed
+  correct-grammar result is the Delta 10-query smoke (`out/nextcell_pdk4_inhibit_smoke_delta_22764696/`).

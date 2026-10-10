@@ -6,6 +6,12 @@ A100 / H200, loading the upstream
 distcp checkpoint directly. Temporal head = the headless-MSE regression of
 `bionemo.maxtoki.model.MaxTokiFineTuneModel`.
 
+## Joint pseudotime training and evaluation
+
+For interval-aware TBC and NextCell on aging SKM, see
+[Delta aging workflow](../../delta/AGING_TEMPORAL.md). It trains both tasks,
+uses obs pseudotime differences as targets, and evaluates held-out donors.
+
 ## What you specify
 
 Everything that matters per experiment lives in a YAML / JSON spec

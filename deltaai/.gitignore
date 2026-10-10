@@ -1,0 +1,16 @@
+# Large binary artifacts should NOT be committed.
+containers/*.sif
+containers/*.sbx
+containers/.cache/
+containers/maxtoki-sbx/
+weights/
+data/
+out/
+logs/
+src/maxToki/
+src/nvidia-resiliency-ext/
+src/TransformerEngine/
+
+# Slurm output files
+slurm/slurm-*.out
+slurm/*.log
